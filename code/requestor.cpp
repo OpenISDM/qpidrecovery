@@ -1,0 +1,143 @@
+#include<vector>
+#include<iostream>
+#include"socketlib.h"
+#include"heartbeat_lib.h"
+#include"discovery.h"
+#include"fileselector.h"
+#include<cstring>
+
+using namespace std;
+
+const unsigned expected_proposers = MAX_PROPOSERS;
+const unsigned expected_acceptors = MAX_ACCEPTORS;
+
+typedef vector<HeartbeatClient*> HBCVector;
+
+static unsigned copyIPArray(char (*ip)[IP_LENGTH], HBCVector &v){
+	for(unsigned i = 0; i < v.size(); i++){
+		v[i]->getIP(ip[i]);
+	}
+	return v.size();
+}
+
+static void replyProposerList(int replysfd, HBCVector &proposers){
+	struct ReplyProposer r;
+	memset(&r, 0, sizeof(r));
+	r.length = copyIPArray(r.ip, proposers);
+
+	if(write(replysfd, &r, sizeof(r)) != sizeof(r))
+		cerr << "replyProposerList: write error\n";
+}
+
+static int receiveHeartbeat(int sfd, HBCVector &v){
+	for(unsigned i = 0; i < v.size(); i++){
+		if(v[i]->getFD() != sfd)
+			continue;
+		v[i]->readMessage();
+		return (signed)i;
+	}
+	return -1;
+}
+
+static void checkExpired(HBCVector &v, FileSelector &fs){
+	unsigned i = 0;
+	while(i < v.size()){
+		if(v[i]->isExpired(HEARTBEAT_PERIOD * 2) == 0){
+			i++;
+			continue;
+		}
+		fs.unregisterFD(v[i]->getFD());
+		delete v[i];
+		v.erase(v.begin() + i);
+	}
+}
+
+static HeartbeatClient *sendRequest(const char *servicename, string ip, unsigned port,
+unsigned version, HBCVector &acceptors, FileSelector &fs){
+	struct ParticipateRequest r;
+	memset(&r, 0, sizeof(r));
+	strcpy(r.name, servicename);
+	r.version = version;
+	r.length = copyIPArray(r.acceptor, acceptors);
+
+	int sfd = tcpconnect(ip.c_str(), port);
+	if(sfd < 0)
+		return NULL;
+	if(write(sfd, &r, sizeof(r)) != sizeof(r)){
+		cerr << "sendrequest: write error\n";
+		close(sfd);
+		return NULL;
+	}
+
+	close(sfd);
+	HeartbeatClient *hbc = new HeartbeatClient(ip.c_str());
+	fs.registerFD(hbc->getFD());
+	return hbc;
+}
+
+int main(int argc,char *argv[]){
+	vector<HeartbeatClient*> proposers, acceptors;
+	const char *servicename = argv[1];
+	int querysfd;
+	FileSelector fs(0, 0);
+
+	if(expected_acceptors > MAX_ACCEPTORS || expected_proposers > MAX_PROPOSERS){
+		cout << "assert: expected too large\n";
+		cerr << "assert: expected too large\n";
+		return -1;
+	}
+	if(argc < 2){
+		cout << "need service name\n";
+		cerr << "need service name\n";
+		return -1;
+	}
+
+	replaceSIGPIPE();
+
+	querysfd = tcpserversocket(QUERY_PROPOSER_PORT);
+	fs.registerFD(querysfd);
+	while(1){
+
+		if(acceptors.size() < expected_acceptors){
+			// TODO: propose & request
+		}
+		if(proposers.size() < expected_proposers){// request
+			HeartbeatClient *hbc = sendRequest(servicename,
+			discoverIP(), REQUEST_PROPOSER_PORT,
+			0, acceptors, fs);
+			if(hbc == NULL){
+				cerr << "error: send proposer request\n";
+				continue;
+			}
+			proposers.push_back(hbc);
+			continue;
+		}
+
+		int ready = fs.getReadReadyFD();
+
+		if(ready == GET_READY_FD_TIMEOUT){// timeout, check heartbeat clients
+			fs.resetTimeout(HEARTBEAT_PERIOD,0);
+			checkExpired(proposers, fs);
+			checkExpired(acceptors, fs);
+			continue;
+		}
+		if(ready == querysfd){
+			int replysfd = tcpaccept(querysfd, NULL);
+			if(replysfd >= 0)
+				replyProposerList(replysfd, proposers);
+			close(replysfd);
+			continue;
+		}
+		if(ready >= 0){// receive heartbeat or TODO: paxos
+			if(
+			receiveHeartbeat(ready, proposers) == -1 &&
+			receiveHeartbeat(ready, acceptors) == -1
+			)
+				cerr << "error: cannot find HeartbeatClient\n";
+			continue;
+		}
+		// error
+		cerr << "FileSelector error " << ready << "\n";
+	}
+	return 0;
+}
