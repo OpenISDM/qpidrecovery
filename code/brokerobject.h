@@ -6,7 +6,7 @@
 using namespace std;
 using namespace qpid::console;
 
-string linkObjectDest(Object& o);
+//string linkObjectDest(Object& o);
 
 //landmark_object.cpp
 enum ObjectType{
@@ -19,6 +19,7 @@ enum ObjectType{
     NUMBER_OF_OBJ_TYPES,
     OBJ_UNKNOWN
 };
+
 string objectTypeToString(enum ObjectType ty);
 enum ObjectType objectStringToType(string st);
 
@@ -43,6 +44,8 @@ public:
 
 	bool operator==(ObjectInfo& oi);
 };
+
+ObjectInfo *newObjectInfoByType(Object *object, Broker *broker, enum ObjectType t);
 
 class BrokerInfo: public ObjectInfo{
 private:
@@ -152,42 +155,6 @@ public:
     int getTTL(string destip, int& ttl); // return 0 = not expired, 1 = expired, -1 = wrong ip
     int setTTL(string destip, int ttl, time_t returntime);
 };
-/*
-class BrokerInfo: public ObjectInfo{
-private:
-    Broker* brokerPtr;
-    bool deleted;
-    vector<ObjectInfo> exchanges;
-    vector<ObjectInfo> queues;
-    vector<ObjectInfo> bindings;
-    vector<ObjectInfo> links;
-    vector<ObjectInfo> bridges;
-    vector<ObjectInfo> inlinks;
-
-    SystemInfo* systeminfo;
-
-    vector<ObjectInfo>* getVector(enum ObjectType t, bool in);
-public:
-    BrokerInfo(string host, unsigned port, Broker* b, SystemInfo* sysptr);
-    BrokerInfo(string hostport, Broker* b, SystemInfo* sysptr);
-    void init(string url, Broker* b, SystemInfo* sysptr);
-    Broker* getBroker();
-    void objects2infos(enum ObjectType t, Object::Vector list);
-    void initVector(enum ObjectType t, Object::Vector& list);
-    void insertVector(ObjectType t, ObjectInfo& obj, bool in);
-    void initBindings();
-    void initInLinks(vector<BrokerInfo>& brokervec);
-    void setDeleted(bool d);
-    void copyObjectsToBroker(BrokerInfo* bi, Object* b);
-    void copyBridges(BrokerInfo* rinfo, Object::Vector& list);
-    void redirectInLinks(BrokerInfo* rinfo, Object::Vector& list, vector<BrokerInfo>& brokervec);
-
-    void updateQueueStat(ObjectId oid, unsigned long long count, unsigned dep);
-    void getLinkHostList(vector<string>& hostlist);
-};
-*/
-//bool operator<(BrokerInfo bi1,BrokerInfo bi2);
-
 
 class ObjectOperator{
 private:

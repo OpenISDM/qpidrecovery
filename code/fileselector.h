@@ -1,3 +1,5 @@
+#ifndef FILESELECTOR_H_INCLIDED
+#define FILESELECTOR_H_INCLIDED
 
 #define GET_READY_FD_TIMEOUT (-2)
 class FileSelector{
@@ -15,3 +17,5 @@ public:
 	void registerFD(int fd);
 	void unregisterFD(int fd);
 };
+
+#endif

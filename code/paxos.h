@@ -1,13 +1,13 @@
 #include"common.h"
+
 enum PaxosMessageType{
 	PHASE1PROPOSAL = 555, // body = Proposal
 	PHASE1ACK, // empty
 	PHASE1NACK, // empty
-	PHASE2REQUEST, // body = Proposal
+	PHASE2REQUEST, // Proposal
 	PHASE2ACK, // empty
 	PHASE2NACK, // empty
-	PHASE3COMMIT, // empty
-	NEWVERSION
+	PHASE3COMMIT, // Proposal
 };
 
 enum PaxosState{
@@ -27,77 +27,159 @@ enum ProposalType{
 	NOPROPOSAL = 999,
 	RECOVERYPROPOSAL,
 	ACCEPTORCHANGEPROPOSAL
-} type;
+};
 
 class Proposal{
-protected:
+private:
 	enum ProposalType type;
 
 public:
-	virtual int SendReceiveContent(int rw, int sfd) = 0;
+	Proposal(enum ProposalType t);
+	int sendTypeContent(int sfd);
+	int sendType(int sfd);
+	enum ProposalType getType();
+
+	virtual int sendReceiveContent(int rw, int sfd) = 0;
 	// rw = 'r' or 'w'
+	virtual bool isEqual(Proposal &p) = 0;
 	virtual int getValue() = 0;
 };
-
-bool operator>(Proposal &p1, Proposal &p2);
-Proposal *receiveProposal(int sfd);
-void sendProposal(int sfd, Proposal *p);
 
 class NoProposal: public Proposal{
 public:
 	NoProposal();
 	int sendReceiveContent(int rw, int sfd);
 	int getValue();
+	bool isEqual(Proposal &p);
 };
 
 class RecoveryProposal: public Proposal{
 private:
-	char ip[IP_LENGTH];
-	unsigned port;
+	char failip[IP_LENGTH];
+	unsigned failport;
+	char backupip[IP_LENGTH];
+	unsigned backupport;
 	unsigned score;
 
 public:
-	RecoveryProposal(const char *backupip = "", unsigned backupport = 0, unsigned backupscore = 0);
+	RecoveryProposal(const char *fip = "", unsigned fport = 0,
+	const char *bip = "", unsigned bport = 0, unsigned bscore = 0);
 	int sendReceiveContent(int rw, int sfd);
 	int getValue();
+	bool isEqual(Proposal &p);
+
+	const char*getBackupIP();
+	unsigned getBackupPort();
+	const char*getFailIP();
+	unsigned getFailPort();
 };
 
 class AcceptorChangeProposal: public Proposal{
 private:
 	unsigned nacceptor;
 	char acceptor[MAX_ACCEPTORS][IP_LENGTH];
+	unsigned version;
 
 public:
-	AcceptorChangeProposal(unsigned nnewlist = 0, const char (*newlist)[IP_LENGTH] = NULL);
+	AcceptorChangeProposal(unsigned newversion = 0,
+	unsigned nnewlist = 0, const char (*newlist)[IP_LENGTH] = NULL);
 	int sendReceiveContent(int rw, int sfd);
 	int getValue();
+	bool isEqual(Proposal &p);
+
+	const char (*getAcceptors())[IP_LENGTH];
+	unsigned getNumberOfAcceptors();
+	int getVersion();
+};
+
+class PaxosMessage{
+public:
+	struct PaxosHeader header;
+	Proposal* proposal;
+
+	PaxosMessage();
+	int receive(int sfd);
+	Proposal *getProposalPtr();
+	~PaxosMessage();
+};
+
+enum PaxosResult{
+	HANDLED = 3333,
+	IGNORED,
+	COMMITTING
 };
 
 class PaxosStateMachine{
+private:
+	// requestor name. cannot change except in constructor
+	char name[SERVICE_NAME_LENGTH];
 protected:
 	unsigned version;
-	unsigned nacceptor;
-	char acceptors[MAX_ACCEPTORS][IP_LENGTH];
+	enum PaxosState state; // managed by subclass
+	unsigned timestamp; // managed by subclass
 
-	enum PaxosState state; // type of last send/received message
-	char name[SERVICE_NAME_LENGTH]; // monitored service name
+	PaxosStateMachine(const char *m);
 
-	int isRecepient(struct PaxosHeader &ph);
+	const char *getName();
 public:
-	virtual int handleMessage(struct PaxosHeader &ph, int sfd) = 0;
+	int isRecepient(const char *m);
+	// return 1 if state transition, 0 if not
+	virtual enum PaxosResult checkTimeout(double timeout) = 0;
+	// return -1 if wrong message, 0 if handled
+	virtual enum PaxosResult handleMessage(int replysfd, PaxosMessage &m) = 0;
 };
 
 class AcceptorStateMachine:public PaxosStateMachine{
 private:
-	struct Proposal*promise;
+	Proposal*promise;
+
+	unsigned nacceptor;
+	char acceptors[MAX_ACCEPTORS][IP_LENGTH];
+
+	enum PaxosResult handlePhase1Message(int replysfd, Proposal *p, unsigned v);
+	enum PaxosResult handlePhase2Message(int replysfd, Proposal *p, unsigned v);
+	enum PaxosResult handlePhase3Message(Proposal *p);
+	void initialize(unsigned v, unsigned n, const char (*a)[IP_LENGTH]);
 public:
-	int handleMessage(struct PaxosHeader &ph, int sfd);
+	AcceptorStateMachine(const char *m, unsigned v,
+	unsigned n, const char (*a)[IP_LENGTH]);
+	~AcceptorStateMachine();
+
+	enum PaxosResult checkTimeout(double timeout);
+	enum PaxosResult handleMessage(int replysfd, PaxosMessage &m);
 };
+
+#include"fileselector.h"
 
 class ProposerStateMachine:public PaxosStateMachine{
 private:
-	struct Proposal*proposal;
+	Proposal *proposal;
+	unsigned phase1ack, phase1nack;
+	unsigned phase2ack, phase2nack;
+
+	unsigned nacceptor;
+	int accsfd[MAX_ACCEPTORS]; // fd = -1 if not in use, >= 0 tcp socket
+	FileSelector* fs;
+
+	enum PaxosResult handlePhase1Message(enum PaxosMessageType t);
+	enum PaxosResult handlePhase2Message(enum PaxosMessageType t);
+	enum PaxosResult handlePhase3Message(Proposal *p);
+	void initialState();
+	void disconnectAcceptors();
+	unsigned connectAcceptors(const char (*acceptors)[IP_LENGTH]);
+	void commit();
 public:
-	int newProposal();
-	int handleMessage(struct PaxosHeader &ph, int sfd);
+	ProposerStateMachine(FileSelector &fs, const char *m, unsigned v,
+	unsigned n, const char (*a)[IP_LENGTH]);
+	~ProposerStateMachine();
+
+	void newProposal(Proposal *newproposal);
+	enum PaxosResult checkTimeout(double timeout);
+	const int *getAcceptorFD();
+
+	enum PaxosResult handleMessage(int replysfd, PaxosMessage &m);
+
+	Proposal *getCommittingProposal();
+	void sendCommitment();
 };
+

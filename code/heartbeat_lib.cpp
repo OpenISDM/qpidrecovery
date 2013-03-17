@@ -1,8 +1,8 @@
 #include<iostream>
 #include"heartbeat_lib.h"
 #include"socketlib.h"
+#include"timestamp.h"
 #include<cstring>
-#include<ctime>
 
 using namespace std;
 
@@ -27,8 +27,8 @@ int HeartbeatClient::readMessage(){
 	return r;
 }
 
-int HeartbeatClient::isExpired(unsigned t){
-	return (((unsigned)time(NULL)) - this->timestamp) > t;
+int HeartbeatClient::isExpired(double t){
+	return (getSecond() - this->timestamp) > t;
 }
 
 int HeartbeatClient::getFD(){
@@ -37,6 +37,20 @@ int HeartbeatClient::getFD(){
 string HeartbeatClient::getIP(){
 	return (string)(this->ip);
 }
-void HeartbeatClient::getIP(char* s){
+void HeartbeatClient::getIP(char *s){
 	strcpy(s, this->ip);
 }
+
+
+// vector
+/*
+HeartbeatClient *searchByIP(const char *ip, HBCVector &v){
+	for(HBCVector::iterator i = v.begin(); i != v.end(); i++){
+		char *hbcip = NULL;
+		(*i)->getIP(hbcip);
+		if(strcmp(ip, hbcip) == 0)
+			return *i;
+	}
+	return NULL;
+}
+*/

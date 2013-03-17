@@ -1,5 +1,5 @@
 #include"listener.h"
-
+#include"brokerobject.h"
 #include<unistd.h>
 #include<memory.h>
 
@@ -75,7 +75,7 @@ void Listener::objectProps2(Broker& broker, Object& object) {
 
 	le.type=NEWOBJECT;
 	le.objtype=t;
-	le.objinfo=newObjectInfoByType(object, &broker, t);
+	le.objinfo=newObjectInfoByType(&object, &broker, t);
 	if(le.objinfo != NULL)
 		writeEvent(le);
 }

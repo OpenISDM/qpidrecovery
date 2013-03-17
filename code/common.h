@@ -34,7 +34,8 @@ struct EmptyMessage{
 #define MAX_PROPOSERS (1)
 #define MAX_ACCEPTORS (MAX_PROPOSERS * 2 - 1)
 struct ParticipateRequest{
-	char name[SERVICE_NAME_LENGTH];
+	char name[SERVICE_NAME_LENGTH]; // name of the requestor
+	unsigned brokerport;
 	unsigned version;
 	unsigned length;
 	char acceptor[MAX_ACCEPTORS][IP_LENGTH];

@@ -6,12 +6,12 @@
 #include"fileselector.h"
 #include<cstring>
 
+typedef vector<HeartbeatClient*> HBCVector;
+
 using namespace std;
 
 const unsigned expected_proposers = MAX_PROPOSERS;
 const unsigned expected_acceptors = MAX_ACCEPTORS;
-
-typedef vector<HeartbeatClient*> HBCVector;
 
 static unsigned copyIPArray(char (*ip)[IP_LENGTH], HBCVector &v){
 	for(unsigned i = 0; i < v.size(); i++){
@@ -29,36 +29,14 @@ static void replyProposerList(int replysfd, HBCVector &proposers){
 		cerr << "replyProposerList: write error\n";
 }
 
-static int receiveHeartbeat(int sfd, HBCVector &v){
-	for(unsigned i = 0; i < v.size(); i++){
-		if(v[i]->getFD() != sfd)
-			continue;
-		v[i]->readMessage();
-		return (signed)i;
-	}
-	return -1;
-}
-
-static void checkExpired(HBCVector &v, FileSelector &fs){
-	unsigned i = 0;
-	while(i < v.size()){
-		if(v[i]->isExpired(HEARTBEAT_PERIOD * 2) == 0){
-			i++;
-			continue;
-		}
-		fs.unregisterFD(v[i]->getFD());
-		delete v[i];
-		v.erase(v.begin() + i);
-	}
-}
-
-static HeartbeatClient *sendRequest(const char *servicename, string ip, unsigned port,
+static HeartbeatClient *sendRequest(const char *servicename, string ip, unsigned port,unsigned brokerport,
 unsigned version, HBCVector &acceptors, FileSelector &fs){
 	struct ParticipateRequest r;
 	memset(&r, 0, sizeof(r));
 	strcpy(r.name, servicename);
 	r.version = version;
 	r.length = copyIPArray(r.acceptor, acceptors);
+	r.brokerport = brokerport;
 
 	int sfd = tcpconnect(ip.c_str(), port);
 	if(sfd < 0)
@@ -75,7 +53,31 @@ unsigned version, HBCVector &acceptors, FileSelector &fs){
 	return hbc;
 }
 
+int receiveHeartbeat(int sfd, HBCVector &v){
+	for(unsigned i = 0; i < v.size(); i++){
+		if(v[i]->getFD() != sfd)
+			continue;
+		v[i]->readMessage();
+		return (signed)i;
+	}
+	return -1;
+}
+
+static HeartbeatClient *checkExpired(HBCVector &v, FileSelector &fs){
+	HeartbeatClient *r = NULL;
+	for(HBCVector::iterator i = v.begin(); i != v.end(); i++){
+		if((*i)->isExpired(HEARTBEAT_PERIOD * 2) == 0)
+			continue;
+		r = (*i);
+		fs.unregisterFD((*i)->getFD());
+		v.erase(i);
+	}
+	return r;
+}
+
 int main(int argc,char *argv[]){
+	replaceSIGPIPE();
+
 	vector<HeartbeatClient*> proposers, acceptors;
 	const char *servicename = argv[1];
 	int querysfd;
@@ -92,8 +94,6 @@ int main(int argc,char *argv[]){
 		return -1;
 	}
 
-	replaceSIGPIPE();
-
 	querysfd = tcpserversocket(QUERY_PROPOSER_PORT);
 	fs.registerFD(querysfd);
 	while(1){
@@ -104,7 +104,7 @@ int main(int argc,char *argv[]){
 		if(proposers.size() < expected_proposers){// request
 			HeartbeatClient *hbc = sendRequest(servicename,
 			discoverIP(), REQUEST_PROPOSER_PORT,
-			0, acceptors, fs);
+			5672, 1, acceptors, fs);
 			if(hbc == NULL){
 				cerr << "error: send proposer request\n";
 				continue;
@@ -117,8 +117,13 @@ int main(int argc,char *argv[]){
 
 		if(ready == GET_READY_FD_TIMEOUT){// timeout, check heartbeat clients
 			fs.resetTimeout(HEARTBEAT_PERIOD,0);
-			checkExpired(proposers, fs);
-			checkExpired(acceptors, fs);
+			HeartbeatClient *hbc;
+			while((hbc = checkExpired(proposers, fs)) != NULL){
+				delete hbc;
+			}
+			while((hbc = checkExpired(acceptors, fs)) != NULL){
+				delete hbc;
+			}
 			continue;
 		}
 		if(ready == querysfd){

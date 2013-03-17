@@ -45,20 +45,20 @@ enum ObjectType objectStringToType(string st){
 	return OBJ_UNKNOWN;
 }
 
-ObjectInfo*newObjectInfoByType(Object& object, Broker*broker, enum ObjectType t){
+ObjectInfo*newObjectInfoByType(Object *object, Broker*broker, enum ObjectType t){
 	switch(t){
 	case OBJ_BROKER:
-		return new BrokerInfo(object, broker);
+		return new BrokerInfo(*object, broker);
 	case OBJ_LINK:
-		return new LinkInfo(object, broker);
+		return new LinkInfo(*object, broker);
 	case OBJ_EXCHANGE:
-		return new ExchangeInfo(object, broker);
+		return new ExchangeInfo(*object, broker);
 	case OBJ_QUEUE:
-		return new QueueInfo(object, broker);
+		return new QueueInfo(*object, broker);
 	case OBJ_BINDING:
-		return new BindingInfo(object, broker);
+		return new BindingInfo(*object, broker);
 	case OBJ_BRIDGE:
-		return new BridgeInfo(object, broker);
+		return new BridgeInfo(*object, broker);
 	default:
 		return NULL;
 	}
@@ -372,166 +372,6 @@ int SystemInfo::setTTL(string destip, int ttl, time_t returntime){
     }
     return -1;
 }
-
-/*class BrokerInfo
-vector<ObjectInfo>* BrokerInfo::getVector(enum ObjectType t, bool in){
-    switch(t){
-    case OBJ_EXCHANGE:
-        return &exchanges;
-    case OBJ_QUEUE:
-        return &queues;
-    case OBJ_BINDING:
-        return &bindings;
-    case OBJ_LINK:
-        return in? &inlinks: &links;
-    case OBJ_BRIDGE:
-        return &bridges;
-    default:
-        return NULL;
-    }
-}
-
-BrokerInfo::BrokerInfo(string host, unsigned port, Broker* b, SystemInfo* sysptr){
-    char s[16];
-    string s2;
-    sprintf(s, "%u",port);
-    init(host + ":" + (string)s, b, sysptr);
-}
-BrokerInfo::BrokerInfo(string hostport, Broker* b, SystemInfo* sysptr){
-    init(hostport, b, sysptr);
-}
-void BrokerInfo::init(string url, Broker* b, SystemInfo* sysptr){
-    ObjectInfo::init(OBJ_BROKER, NULL);
-    brokerPtr = b;
-    setBrokerUrl(url);
-    deleted = false;
-    exchanges.clear();
-    queues.clear();
-    bindings.clear();
-    links.clear();
-    bridges.clear();
-    inlinks.clear();
-    systeminfo = sysptr;
-}
-Broker* BrokerInfo::getBroker(){
-    return brokerPtr;
-}
-void BrokerInfo::initVector(enum ObjectType t, Object::Vector& list){
-    vector<ObjectInfo>& v = *(getVector(t, false));
-    v.resize(list.size());
-    for(unsigned i = 0; i != list.size(); i++)
-        v[i].init(t, list[i]);
-}
-void BrokerInfo::insertVector(ObjectType t, ObjectInfo& obj, bool in){
-    vector<ObjectInfo>& v = *(getVector(t, in));
-    v.push_back(obj);
-}
-void BrokerInfo::initBindings(){
-    for(unsigned i = 0; i < bindings.size(); i++){
-        bindings[i].initBinding(exchanges, queues);
-    }
-}
-void BrokerInfo::initInLinks(vector<BrokerInfo>& brokervec){
-    for(unsigned i =0; i < links.size(); i++){
-        string url = links[i].getLinkDest();
-        for(unsigned j = 0; j < brokervec.size() ; j++){
-            if(brokervec[j].getBrokerUrl() == url){
-                brokervec[j].insertVector(OBJ_LINK, links[i], true);
-cout << "link(to): " << url << " to " <<  getBrokerUrl() << endl;
-                break;
-            }
-        }
-    }
-}
-
-void BrokerInfo::setDeleted(bool d){
-    deleted = d;
-}
-
-void BrokerInfo::copyObjectsToBroker(BrokerInfo* bi, Object* b){
-    vector<ObjectInfo>* v[4]={
-        &exchanges,
-        &queues,
-        &bindings,
-        &links
-    };
-
-    for(unsigned i = 0; i < 4; i++){
-        vector<ObjectInfo>& v2 = *(v[i]);
-        for(unsigned j = 0; j < v2.size(); j++){
-            v2[j].copyTo(b);
-        }
-    }
-}
-
-void BrokerInfo::copyBridges(BrokerInfo* rinfo, Object::Vector& list){
-    for(unsigned i = 0; i != bridges.size(); i++){
-        ObjectId linkobjid = bridges[i].getLinkId();
-        string desturl = "";
-        for(unsigned j = 0; j < links.size(); j++){
-            if(links[j].getId() != linkobjid)
-                continue;
-            desturl = links[j].getLinkDest();
-            break;
-        }
-        if(desturl.compare("") == 0)
-            cout << "error: cannot find link";
-
-        for(unsigned j = 0; j < list.size(); j++){
-            string host = list[j].attrString("host");
-            unsigned port = list[j].attrUint("port");
-            char p[16];
-            sprintf(p, "%u", port);
-            string linkurl = host + ":" + (string)p;
-            if(desturl.compare(linkurl) != 0)
-                continue;
-            bridges[i].copyTo(&(list[j]));
-        }
-    }
-}
-
-void BrokerInfo::redirectInLinks(BrokerInfo* rinfo, Object::Vector& list, vector<BrokerInfo>& brokervec){
-    for(unsigned i = 0;i < inlinks.size(); i++){
-        string burl = inlinks[i].getBrokerUrl();
-        unsigned sepa = burl.find(':');
-        string host = burl.substr(0, sepa);
-        unsigned port = 0;
-        for(unsigned j = sepa+1; j < burl.size();j++)
-            port = port * 10 + (burl[j] - '0');
-
-        for(unsigned j = 0; j < list.size(); j++){
-            Broker* b = list[j].getBroker();
-            if(burl.compare(b->getUrl()) != 0)
-                continue;
-            ObjectOperator boper(&(list[j]), OBJ_BROKER);
-            boper.addLink(host,port);
-            break;
-        }
-    }
-}
-
-void BrokerInfo::updateQueueStat(ObjectId oid, unsigned long long count, unsigned dep){
-    unsigned long long lastcount = count;
-    unsigned lastdep = dep;
-    for(unsigned i = 0; i != queues.size(); i++){
-        if(queues[i].getId() != oid)
-            continue;
-        queues[i].setQueueStat(lastcount, lastdep);
-        this->systeminfo->addStatistics(
-        count - lastcount,
-        ((signed long long)dep) - ((signed long long)lastdep)
-        );
-        return;
-    }
-    cerr << "error: updateQueueStat\n";
-}
-
-void BrokerInfo::getLinkHostList(vector<string>& hostlist){
-    hostlist.resize(links.size());
-    for(unsigned i = 0; i < links.size(); i++)
-        hostlist[i]=links[i].getLinkDestAddress();
-}
-*/
 
 //class ObjectOperator
 ObjectOperator::ObjectOperator(Object* o, enum ObjectType t){

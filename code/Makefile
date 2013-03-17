@@ -1,7 +1,5 @@
-OBJECTS=topology.o listener.o brokerobject.o socketlib.o \
-memoryusage.o pingd_lib.o
-
-COMMONOBJS=socketlib.o fileselector.o heartbeat_lib.o discovery.o
+COMMONOBJS=socketlib.o fileselector.o heartbeat_lib.o discovery.o timestamp.o
+RECOVERYOBJS=recoverymanager.o brokeraddress.o brokerobject.o listener.o
 
 all: pingd heartbeat requestor acceptor proposer
 
@@ -15,12 +13,12 @@ heartbeat: heartbeat_main.o heartbeat_tester.o $(COMMONOBJS)
 	g++ heartbeat_main.o $(COMMONOBJS) -o heartbeat
 	g++ heartbeat_tester.o $(COMMONOBJS) -o heartbeat_tester
 
-proposer: proposer.o $(COMMONOBJS) paxos.o
-	g++ proposer.o $(COMMONOBJS) paxos.o -o proposer
-	#-lqpidclient -lqmfconsole -lqpidcommon -o proposer
+proposer: proposer.o $(RECOVERYOBJS) $(COMMONOBJS) paxos.o paxosproposal.o
+	g++ proposer.o $(COMMONOBJS) paxos.o paxosproposal.o $(RECOVERYOBJS) \
+	-lqpidclient -lqmfconsole -lqpidcommon -o proposer
 
-acceptor: acceptor.o $(COMMONOBJS) paxos.o
-	g++ acceptor.o $(COMMONOBJS) paxos.o -o acceptor
+acceptor: acceptor.o $(COMMONOBJS) paxos.o paxosproposal.o
+	g++ acceptor.o $(COMMONOBJS) paxos.o paxosproposal.o -o acceptor
 	
 pingd_lib.o: pingd_src/pingd_lib.c
 	g++ -Wall -Wextra -c pingd_src/pingd_lib.c
