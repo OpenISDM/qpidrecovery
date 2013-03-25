@@ -6,7 +6,7 @@
 using namespace std;
 using namespace qpid::console;
 
-//string linkObjectDest(Object& o);
+string linkObjectDest(Object& o);
 
 //landmark_object.cpp
 enum ObjectType{

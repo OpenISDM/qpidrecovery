@@ -1,43 +1,54 @@
 #ifndef LISTENER_H_DEFINED
 #define LISTENER_H_DEFINED
 
-#include "qpid/console/ConsoleListener.h"
-#include "qpid/console/SessionManager.h"
-#include "brokerobject.h"
-#include "fileselector.h"
+#include"timestamp.h"
+#include<qpid/console/ConsoleListener.h>
+#include<qpid/console/SessionManager.h>
+#include"brokerobject.h"
 
 using namespace qpid::console;
 
 enum ListenerEventType{
-	BROKERDISCONNECT,
-	BYTEDEQUEUE,
-	BYTEENQUEUE,
-	TIMEOUT,
-	NEWOBJECT,
-	FILEREADY
-};
-struct ListenerEvent{
-	enum ListenerEventType type;
-	Broker*bptr;
-	char connecturl[32];
-	ObjectId oid;
-	unsigned long long ullvalue;// need better design
-	unsigned uvalue;
-	enum ObjectType objtype;
-	ObjectInfo* objinfo;
-	int readyfd;
+	BROKERDISCONNECTION = 142857,
+	OBJECTPROPERTY
+//	BYTEDEQUEUE,
+//	BYTEENQUEUE,
 };
 
-class Listener : public ConsoleListener {
+class ListenerEvent{
 private:
-	int pipefd[2];
-	FileSelector *fs;
-
-	int writeEvent(struct ListenerEvent& le);
+	enum ListenerEventType type;
+protected:
+	ListenerEvent(enum ListenerEventType t);
 public:
-	static const long default_timeout = 3;
-	Listener();
-	~Listener();
+	enum ListenerEventType getType();
+
+	static int sendPtr(int fd, ListenerEvent *le);
+	static ListenerEvent *receivePtr(int fd); // need to delete the ptr
+};
+
+class BrokerDisconnectionEvent: public ListenerEvent{
+public:
+	BrokerDisconnectionEvent(string url);
+	char brokerip[32];
+	unsigned brokerport;
+};
+
+class ObjectPropertyEvent: public ListenerEvent{
+private:
+	ObjectInfo *objinfo;
+public:
+	ObjectPropertyEvent(enum ObjectType t, ObjectInfo *i);
+	~ObjectPropertyEvent();
+	enum ObjectType objtype;
+	ObjectInfo *getObjectInfo();
+};
+
+class Listener: public ConsoleListener {
+private:
+	int eventfd;
+public:
+	Listener(int pipewritefd);
 
 	void brokerConnected(const Broker& broker);
 	void brokerDisconnected(const Broker& broker);
@@ -45,14 +56,10 @@ public:
 	void newClass(const ClassKey& classKey);
 	void newAgent(const Agent& agent);
 	void delAgent(const Agent& agent);
-	void objectProps2(Broker& broker, Object& object);
 	void objectProps(Broker& broker, Object& object);
 	void objectStats(Broker& broker, Object& object);
 	void event(Event& event);
-
-	void registerFD(int fd);
-	void unregisterFD(int fd);
-	int readEvent(struct ListenerEvent& le);
 };
 
 #endif
+

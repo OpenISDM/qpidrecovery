@@ -36,7 +36,8 @@ struct EmptyMessage{
 struct ParticipateRequest{
 	char name[SERVICE_NAME_LENGTH]; // name of the requestor
 	unsigned brokerport;
-	unsigned version;
+	unsigned votingversion;
+	unsigned committedversion; // of AcceptorChangePropsal
 	unsigned length;
 	char acceptor[MAX_ACCEPTORS][IP_LENGTH];
 };

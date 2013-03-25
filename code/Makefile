@@ -1,24 +1,25 @@
 COMMONOBJS=socketlib.o fileselector.o heartbeat_lib.o discovery.o timestamp.o
 RECOVERYOBJS=recoverymanager.o brokeraddress.o brokerobject.o listener.o
+PAXOSOBJS=paxos.o paxosproposal.o
 
 all: pingd heartbeat requestor acceptor proposer
 
 #sendreceive: sendreceive.cpp
 #	g++ sendreceive.cpp -lqpidmessaging -lqpidtypes -lqpidcommon -o sendreceive -Wall -Wextra
 
-requestor: requestor.o $(COMMONOBJS)
-	g++ requestor.o $(COMMONOBJS) -o requestor
+requestor: requestor.o $(COMMONOBJS) $(PAXOSOBJS)
+	g++ requestor.o $(COMMONOBJS) $(PAXOSOBJS) -o requestor
 
 heartbeat: heartbeat_main.o heartbeat_tester.o $(COMMONOBJS)
 	g++ heartbeat_main.o $(COMMONOBJS) -o heartbeat
 	g++ heartbeat_tester.o $(COMMONOBJS) -o heartbeat_tester
 
-proposer: proposer.o $(RECOVERYOBJS) $(COMMONOBJS) paxos.o paxosproposal.o
-	g++ proposer.o $(COMMONOBJS) paxos.o paxosproposal.o $(RECOVERYOBJS) \
+proposer: proposer.o $(COMMONOBJS) $(PAXOSOBJS) $(RECOVERYOBJS)
+	g++ proposer.o $(COMMONOBJS) $(PAXOSOBJS) $(RECOVERYOBJS) \
 	-lqpidclient -lqmfconsole -lqpidcommon -o proposer
 
-acceptor: acceptor.o $(COMMONOBJS) paxos.o paxosproposal.o
-	g++ acceptor.o $(COMMONOBJS) paxos.o paxosproposal.o -o acceptor
+acceptor: acceptor.o $(COMMONOBJS) $(PAXOSOBJS)
+	g++ acceptor.o $(COMMONOBJS) $(PAXOSOBJS) -o acceptor
 	
 pingd_lib.o: pingd_src/pingd_lib.c
 	g++ -Wall -Wextra -c pingd_src/pingd_lib.c

@@ -3,19 +3,9 @@
 #include<unistd.h>
 #include<cstring>
 
-Proposal::Proposal(enum ProposalType t){
+Proposal::Proposal(enum ProposalType t, unsigned v){
 	this->type = t;
-}
-
-int Proposal::sendTypeContent(int sfd){
-	int rt, rc;
-	rt = this->sendType(sfd);
-	if(rt < 0)
-		return -1;
-	rc = this->sendReceiveContent('w', sfd);
-	if(rc < 0)
-		return -1;
-	return rt + rc;
+	this->newversion = v;
 }
 
 int Proposal::sendType(int sfd){
@@ -27,6 +17,10 @@ int Proposal::sendType(int sfd){
 
 enum ProposalType Proposal::getType(){
 	return this->type;
+}
+
+unsigned Proposal::getVersion(){
+	return this->newversion;
 }
 
 // getValue
@@ -94,9 +88,45 @@ void rwType(int rw, int sfd, T &buff, int &returnsum){
 		returnsum+=r;
 }
 
+int Proposal::sendProposal(int sfd){
+	int t = 0;
+	rwType('w', sfd, this->type, t);
+	rwType('w', sfd, this->newversion, t);
+	int rc = this->sendReceiveContent('w', sfd);
+	return (t < 0 || rc < 0)? -1: t + rc;
+}
+
+Proposal *Proposal::receiveProposal(int sfd){
+	enum ProposalType proposaltype;
+	unsigned newversion;
+	Proposal *p;
+	{
+		int t = 0;
+		rwType('r', sfd, proposaltype, t);
+		rwType('r', sfd, newversion, t);
+		if(t < 0)
+			return NULL;
+	}
+	switch(proposaltype){
+	case NOPROPOSAL:
+		return NULL;
+	case RECOVERYPROPOSAL:
+		p = new RecoveryProposal(newversion);
+		break;
+	case ACCEPTORCHANGEPROPOSAL:
+		p = new AcceptorChangeProposal(newversion);
+		break;
+	}
+	if(p->sendReceiveContent('r', sfd) < 0){
+		delete p;
+		return NULL;
+	}
+	return p;
+}
+
 // class NoProposal
 NoProposal::NoProposal():
-Proposal(NOPROPOSAL){
+Proposal(NOPROPOSAL, 0){
 }
 
 int NoProposal::sendReceiveContent(int rw, int sfd){
@@ -106,9 +136,9 @@ int NoProposal::sendReceiveContent(int rw, int sfd){
 }
 
 // class RecoveryProposal
-RecoveryProposal::RecoveryProposal(const char *fip, unsigned fport,
+RecoveryProposal::RecoveryProposal(unsigned ver, const char *fip, unsigned fport,
 const char *bip, unsigned bport, unsigned bscore):
-Proposal(RECOVERYPROPOSAL){
+Proposal(RECOVERYPROPOSAL, ver){
 	strcpy(this->failip, fip);
 	this->failport = fport;
 	strcpy(this->backupip, bip);
@@ -143,20 +173,18 @@ unsigned RecoveryProposal::getFailPort(){
 }
 
 //class AcceptorChangeProposal
-AcceptorChangeProposal::AcceptorChangeProposal(unsigned newversion,
+AcceptorChangeProposal::AcceptorChangeProposal(unsigned ver,
 unsigned nnewlist, const char (*newlist)[IP_LENGTH]):
-Proposal(ACCEPTORCHANGEPROPOSAL){
+Proposal(ACCEPTORCHANGEPROPOSAL, ver){
 	this->nacceptor = nnewlist;
 	for(unsigned i = 0; i < nnewlist; i++)
 		strcpy(this->acceptor[i], newlist[i]);
-	this->version = newversion;
 }
 
 int AcceptorChangeProposal::sendReceiveContent(int rw, int sfd){
 	int t = 0;
 	rwType(rw, sfd, this->nacceptor, t);
 	rwType(rw, sfd, this->acceptor, t);
-	rwType(rw, sfd, this->version, t);
 	return t;
 }
 
@@ -168,7 +196,4 @@ unsigned AcceptorChangeProposal::getNumberOfAcceptors(){
 	return this->nacceptor;
 }
 
-int AcceptorChangeProposal::getVersion(){
-	return this->version;
-}
 

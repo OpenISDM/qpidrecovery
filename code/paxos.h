@@ -32,12 +32,15 @@ enum ProposalType{
 class Proposal{
 private:
 	enum ProposalType type;
+	unsigned newversion;
 
 public:
-	Proposal(enum ProposalType t);
-	int sendTypeContent(int sfd);
+	Proposal(enum ProposalType t, unsigned v);
+	int sendProposal(int sfd);
+	static Proposal *receiveProposal(int sfd);
 	int sendType(int sfd);
 	enum ProposalType getType();
+	unsigned getVersion();
 
 	virtual int sendReceiveContent(int rw, int sfd) = 0;
 	// rw = 'r' or 'w'
@@ -62,7 +65,7 @@ private:
 	unsigned score;
 
 public:
-	RecoveryProposal(const char *fip = "", unsigned fport = 0,
+	RecoveryProposal(unsigned ver, const char *fip = "", unsigned fport = 0,
 	const char *bip = "", unsigned bport = 0, unsigned bscore = 0);
 	int sendReceiveContent(int rw, int sfd);
 	int getValue();
@@ -78,10 +81,9 @@ class AcceptorChangeProposal: public Proposal{
 private:
 	unsigned nacceptor;
 	char acceptor[MAX_ACCEPTORS][IP_LENGTH];
-	unsigned version;
 
 public:
-	AcceptorChangeProposal(unsigned newversion = 0,
+	AcceptorChangeProposal(unsigned ver,
 	unsigned nnewlist = 0, const char (*newlist)[IP_LENGTH] = NULL);
 	int sendReceiveContent(int rw, int sfd);
 	int getValue();
@@ -89,7 +91,6 @@ public:
 
 	const char (*getAcceptors())[IP_LENGTH];
 	unsigned getNumberOfAcceptors();
-	int getVersion();
 };
 
 class PaxosMessage{
@@ -106,22 +107,27 @@ public:
 enum PaxosResult{
 	HANDLED = 3333,
 	IGNORED,
-	COMMITTING
+	COMMITTING_SELF,
+	COMMITTING_OTHER
 };
 
 class PaxosStateMachine{
 private:
-	// requestor name. cannot change except in constructor
+	// requestor name&voting version. cannot change except in constructor
 	char name[SERVICE_NAME_LENGTH];
-protected:
 	unsigned version;
-	enum PaxosState state; // managed by subclass
-	unsigned timestamp; // managed by subclass
+protected:
+	Proposal *lastcommit;
 
-	PaxosStateMachine(const char *m);
+	enum PaxosState state; // managed by subclass
+	double timestamp; // managed by subclass
+
+	PaxosStateMachine(const char *m, Proposal *p, unsigned v, enum PaxosState s, double t);
+	~PaxosStateMachine();
 
 	const char *getName();
 public:
+	unsigned getVotingVersion();
 	int isRecepient(const char *m);
 	// return 1 if state transition, 0 if not
 	virtual enum PaxosResult checkTimeout(double timeout) = 0;
@@ -133,16 +139,12 @@ class AcceptorStateMachine:public PaxosStateMachine{
 private:
 	Proposal*promise;
 
-	unsigned nacceptor;
-	char acceptors[MAX_ACCEPTORS][IP_LENGTH];
-
 	enum PaxosResult handlePhase1Message(int replysfd, Proposal *p, unsigned v);
 	enum PaxosResult handlePhase2Message(int replysfd, Proposal *p, unsigned v);
 	enum PaxosResult handlePhase3Message(Proposal *p);
-	void initialize(unsigned v, unsigned n, const char (*a)[IP_LENGTH]);
+	// void initialState(unsigned v);
 public:
-	AcceptorStateMachine(const char *m, unsigned v,
-	unsigned n, const char (*a)[IP_LENGTH]);
+	AcceptorStateMachine(const char *m, unsigned v, Proposal *last);
 	~AcceptorStateMachine();
 
 	enum PaxosResult checkTimeout(double timeout);
@@ -151,7 +153,7 @@ public:
 
 #include"fileselector.h"
 
-class ProposerStateMachine:public PaxosStateMachine{
+class ProposerStateMachine:public PaxosStateMachine{ // this->version = lastcommit->version
 private:
 	Proposal *proposal;
 	unsigned phase1ack, phase1nack;
@@ -161,22 +163,24 @@ private:
 	int accsfd[MAX_ACCEPTORS]; // fd = -1 if not in use, >= 0 tcp socket
 	FileSelector* fs;
 
-	enum PaxosResult handlePhase1Message(enum PaxosMessageType t);
-	enum PaxosResult handlePhase2Message(enum PaxosMessageType t);
+	enum PaxosResult handlePhase1Message(int replysfd, enum PaxosMessageType t);
+	enum PaxosResult handlePhase2Message(int replysfd, enum PaxosMessageType t);
 	enum PaxosResult handlePhase3Message(Proposal *p);
 	void initialState();
 	void disconnectAcceptors();
 	unsigned connectAcceptors(const char (*acceptors)[IP_LENGTH]);
-	void commit();
+
+	bool isReadyToCommit();
+	void commit(Proposal *p);
 public:
 	ProposerStateMachine(FileSelector &fs, const char *m, unsigned v,
-	unsigned n, const char (*a)[IP_LENGTH]);
+	AcceptorChangeProposal *last);
 	~ProposerStateMachine();
 
-	void newProposal(Proposal *newproposal);
-	enum PaxosResult checkTimeout(double timeout);
-	const int *getAcceptorFD();
+	enum PaxosResult newProposal(Proposal *newproposal);
+	// const int *getAcceptorFD();
 
+	enum PaxosResult checkTimeout(double timeout);
 	enum PaxosResult handleMessage(int replysfd, PaxosMessage &m);
 
 	Proposal *getCommittingProposal();

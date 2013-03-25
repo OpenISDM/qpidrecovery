@@ -5,142 +5,138 @@
 
 using namespace std;
 
-double getSecond();
+//class ListenerEvent
+int ListenerEvent::sendPtr(int fd, ListenerEvent *le){
+	return write(fd, &le, sizeof(ListenerEvent*));
+}
+
+ListenerEvent *ListenerEvent::receivePtr(int fd){
+	ListenerEvent *r;
+	if(read(fd, &r, sizeof(ListenerEvent*)) != sizeof(ListenerEvent*))
+		return NULL;
+	return r;
+}
+
+ListenerEvent::ListenerEvent(enum ListenerEventType t){
+	this->type = t;
+}
+
+enum ListenerEventType ListenerEvent::getType(){
+	return this->type;
+}
+
+static void urlToIPPort(string url, char *ip, unsigned &port){
+	unsigned i;
+	for(i = 0; url[i]!=':'; i++)ip[i] = url[i];
+	ip[i] = '\0';
+	port=0;
+	for(i++; i < url.length(); i++)
+		port = port * 10 + (url[i] - '0');
+}
+
+BrokerDisconnectionEvent::BrokerDisconnectionEvent(string url):
+ListenerEvent(BROKERDISCONNECTION){
+	urlToIPPort(url, this->brokerip, this->brokerport);
+}
+
+ObjectPropertyEvent::ObjectPropertyEvent(enum ObjectType t, ObjectInfo *i):
+ListenerEvent(OBJECTPROPERTY){
+	this->objtype = t;
+	this->objinfo = i;
+}
+
+ObjectInfo *ObjectPropertyEvent::getObjectInfo(){
+	ObjectInfo *r = this->objinfo;
+	this->objinfo = NULL;
+	return r;
+}
+
+ObjectPropertyEvent::~ObjectPropertyEvent(){
+	if(this->objinfo != NULL)
+		delete this->objinfo;
+}
+
 
 //class Listener
 
-int Listener::writeEvent(struct ListenerEvent& le){
-	return write(pipefd[1], &le, sizeof(ListenerEvent));
+Listener::Listener(int fd){
+	this->eventfd = fd;
 }
 
-Listener::Listener(){
-	if(pipe(this->pipefd) == -1)
-		cerr << "cannot create pipe\n";
-	fs = new FileSelector(default_timeout, 0);
-	registerFD(this->pipefd[0]);
-}
-
-Listener::~Listener(){
-	delete fs;
-	close(pipefd[0]);
-	close(pipefd[1]);
-}
-
-void Listener::brokerConnected(const Broker& broker) {
+void Listener::brokerConnected(const Broker& broker){
 	cout << "brokerConnected: " << broker << endl;
 }
-void Listener::brokerDisconnected(const Broker& broker) {
-	struct ListenerEvent le;
-	le.type = BROKERDISCONNECT;
-	string url=broker.getUrl();
-	cout << "brokerDisconnected: " << url << endl;
-	for(unsigned i=0; i<url.length(); i++)
-		le.connecturl[i]=url[i];
-	le.connecturl[url.length()]='\0';
-	le.bptr=(Broker*)&broker;
-	cout << "passing event: return " << writeEvent(le) << endl;
+
+void Listener::brokerDisconnected(const Broker& broker){
+	ListenerEvent *le = new BrokerDisconnectionEvent(broker.getUrl());
+	cout << "brokerDisconnected: " << broker.getUrl() << endl;
+	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
 }
-void Listener::newPackage(const std::string& name) {
+
+void Listener::newPackage(const std::string& name){
 	cout << "newPackage: " << name << endl;
 	cout << getSecond() <<endl;
 }
-void Listener::newClass(const ClassKey& classKey) {
+
+void Listener::newClass(const ClassKey& classKey){
 	cout << "newClass: key=" << classKey << endl;
 	cout << getSecond() <<endl;
 }
-void Listener::newAgent(const Agent& agent) {
+
+void Listener::newAgent(const Agent& agent){
 	cout << "newAgent: " << agent << endl;
-	cout << getSecond() <<endl;
+	cout << getSecond() << endl;
 }
-void Listener::delAgent(const Agent& agent) {
+void Listener::delAgent(const Agent& agent){
 	cout << "delAgent: " << agent << endl;
-	cout << getSecond() <<endl;
+	cout << getSecond() << endl;
 }
-void Listener::objectProps(Broker& broker, Object& object) {
+
+void Listener::objectProps(Broker& broker, Object& object){
 	//discover new objects here
 	cout << "objectProps: broker=" << broker << " object=" << object << endl;
-	cout << getSecond() <<endl;
-	objectProps2(broker, object);
-}
+	cout << getSecond() << endl;
 
-ObjectInfo*newObjectInfoByType(Object& obj, Broker*broker, enum ObjectType t);
-// in brokerobject.cpp
-
-void Listener::objectProps2(Broker& broker, Object& object) {
 	//discover new objects here
 	//cout << "objectProps: broker=" << broker << " object=" << object << endl;
+	enum ObjectType t = objectStringToType(object.getClassKey().getClassName());
+	ObjectInfo *oi = newObjectInfoByType(&object, &broker, t);
+	if(oi == NULL)
+		return;
+
+	ListenerEvent *le = new ObjectPropertyEvent(t, oi);
+	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
+}
+
+void Listener::objectStats(Broker& broker, Object& object){
+	cout << "objectStats: broker=" << broker << " object=" << object << endl;
+	cout << getSecond() <<endl;
+/*
+return;
 	string classname = object.getClassKey().getClassName();
 	struct ListenerEvent le;
-	enum ObjectType t=objectStringToType(classname);
-
-	le.type=NEWOBJECT;
-	le.objtype=t;
-	le.objinfo=newObjectInfoByType(&object, &broker, t);
-	if(le.objinfo != NULL)
-		writeEvent(le);
+	if(classname.compare("queue") !=0)
+	return;
+	le.type = BYTEDEQUEUE;
+	le.oid = object.getObjectId();
+	le.ullvalue = object.attrUint64("msgTotalDequeues");
+	le.uvalue = object.attrUint("byteDepth");
+	writeEvent(le);
+*/
 }
+void Listener::event(Event& event){
+	cout << event << endl;
+	cout << getSecond() <<endl;
+	/*
+	const string bind = "bind";
+	const struct SchemaClass* sc = event.getSchema();
+	string classname = sc->key.getClassName();
+	cout << "event: " << event << endl;
 
-void Listener::objectStats(Broker& broker, Object& object) {
-    cout << "objectStats: broker=" << broker << " object=" << object << endl;
-    cout << getSecond() <<endl;
-return;
-
-    string classname = object.getClassKey().getClassName();
-    struct ListenerEvent le;
-    if(classname.compare("queue") !=0)
-        return;
-    le.type = BYTEDEQUEUE;
-    le.oid = object.getObjectId();
-    le.ullvalue = object.attrUint64("msgTotalDequeues");
-    le.uvalue = object.attrUint("byteDepth");
-    writeEvent(le);
-}
-void Listener::event(Event& event) {/*
-    const string bind = "bind";
-    const struct SchemaClass* sc = event.getSchema();
-    string classname = sc->key.getClassName();
-    cout << "event: " << event << endl;
-
-    if(classname.compare(bind) == 0){
-        cout << "event: " << classname << endl <<
-        "    exchange: " << event.attrString("exName") << endl <<
-        "    queue: " << event.attrString("qName") << endl;
-    }*/
-    cout << event << endl;
-    cout << getSecond() <<endl;
-}
-
-void Listener::registerFD(int fd){
-	fs->registerFD(fd);
-}
-
-void Listener::unregisterFD(int fd){
-	fs->unregisterFD(fd);
-}
-
-int Listener::readEvent(struct ListenerEvent& le){
-	int r = -1;
-	int f = fs->getReadReadyFD();
-	switch(f){
-	case -2:
-		fs->resetTimeout(default_timeout, 0);
-		le.type = TIMEOUT;
-		r = 0;
-		break;
-	case -1:
-		cerr << "select error";
-		break;
-	default:
-		if(f == pipefd[0]){
-			r = read(f, &le, sizeof(struct ListenerEvent));
-		}
-		else{
-			le.type=FILEREADY;
-			le.readyfd = f;
-			r = 0;
-		}
-		break;
-	}
-	return r;
+	if(classname.compare(bind) == 0){
+		cout << "event: " << classname << endl <<
+		"  exchange: " << event.attrString("exName") << endl <<
+		"  queue: " << event.attrString("qName") << endl;
+	}*/
 }
 
