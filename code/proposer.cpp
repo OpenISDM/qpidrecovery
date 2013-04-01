@@ -71,21 +71,25 @@ static int handleCommit(const enum PaxosResult r, Monitored &mon, FileSelector &
 RecoveryManager &recovery){
 	if(r != COMMITTING_SELF && r != COMMITTING_OTHER)
 		return -1;
-
+STDCOUT("commit at " << getSecond() << "\n");
 	Proposal *p = mon.psm->getCommittingProposal();
 	const enum ProposalType ptype = p->getType();
 	if(ptype == RECOVERYPROPOSAL){
+STDCOUT("recovery proposal\n");
 		RecoveryProposal *rp = (RecoveryProposal*)p;
 		strcpy(mon.ip, rp->getBackupIP());
 		mon.port = rp->getBackupPort();
 		if(r == COMMITTING_SELF){
+STDCOUT("recovery begins at " << getSecond() << " \n");
 			recovery.copyObjects(
 			rp->getFailIP(), rp->getFailPort(),
 			rp->getBackupIP(), rp->getBackupPort());
 			mon.psm->sendCommitment();
+STDCOUT("recovery ends at " << getSecond() << "\n");
 		}
 	}
 	if(ptype == ACCEPTORCHANGEPROPOSAL){
+STDCOUT("acceptor change\n");
 		AcceptorChangeProposal *ap = (AcceptorChangeProposal*)p;
 		ProposerStateMachine *newpsm = new ProposerStateMachine(
 		fs, mon.name, ap->getVersion() + 1,
@@ -102,7 +106,7 @@ static int handlePaxosMessage(int ready, MVector &monitor, RecoveryManager &reco
 	PaxosMessage m;
 	if(m.receive(ready) < 0)
 		return -1;
-
+STDCOUT("pmessage\n");
 	for(MVector::iterator i = monitor.begin(); i != monitor.end(); i++){
 		Monitored &mon = (*i);
 		ProposerStateMachine *psm = mon.psm;
@@ -119,14 +123,36 @@ static int handlePaxosMessage(int ready, MVector &monitor, RecoveryManager &reco
 	return 0;
 }
 
+static void startRecovery(Monitored &mon, FileSelector &fs, RecoveryManager &recovery){
+STDCOUT("lose heartbeat: " << mon.ip << ":" << mon.port << " " << mon.name << "\n");
+	fs.unregisterFD((mon.hbc)->getFD());
+	delete mon.hbc;
+	mon.hbc = NULL;
+	recovery.deleteBroker(mon.ip, mon.port);
+STDCOUT("recovery proposal at " << getSecond() << "\n");
+	unsigned backupport;
+	const char *backupip = discoverBackup(backupport);
+	PaxosResult r = mon.psm->newProposal(
+	new RecoveryProposal(mon.psm->getVotingVersion(),
+	mon.ip, mon.port, backupip, backupport, 50)
+	);
+	handleCommit(r, mon, fs, recovery);
+}
+
+// return -1 if not found, -2 if ok, >=0 if error
+#define HB_NOT_FOUND (-1)
+#define HB_HANDLED (-2)
 static int receiveHeartbeat(int sfd, MVector &v){
 	for(unsigned i = 0; i < v.size(); i++){
+		if(v[i].hbc == NULL)
+			continue;
 		if(v[i].hbc->getFD() != sfd)
 			continue;
-		v[i].hbc->readMessage();
-		return (signed)i;
+		if(v[i].hbc->readMessage() < 0)
+			return (signed)i;
+		return HB_HANDLED;
 	}
-	return -1;
+	return HB_NOT_FOUND;
 }
 
 int main(int argc, char *argv[]){
@@ -145,9 +171,12 @@ int main(int argc, char *argv[]){
 	fs.registerFD(requestsfd);
 	fs.registerFD(querysfd);
 	while(1){
+STDCOUT(".");
+STDCOUTFLUSH();
 		int ready = fs.getReadReadyFD();
-		
+
 		if(ready == requestsfd){
+STDCOUT(ready << "(requestsfd)\n");
 			char from[IP_LENGTH];
 			struct ParticipateRequest r;
 			int newsfd;
@@ -163,6 +192,7 @@ int main(int argc, char *argv[]){
 			continue;
 		}
 		if(ready == querysfd){
+STDCOUT(ready << " (querysfd)\n");
 			char from[IP_LENGTH];
 			struct QueryAddress r;
 			int newsfd;
@@ -175,6 +205,7 @@ int main(int argc, char *argv[]){
 			continue;
 		}
 		if(ready == recoveryfd){
+STDCOUT(ready << "(recoverysfd)\n");
 			ListenerEvent *le = recovery.handleEvent();
 			if(le->getType() == BROKERDISCONNECTION){
 				BrokerDisconnectionEvent *bde = (BrokerDisconnectionEvent*)le;
@@ -185,7 +216,11 @@ int main(int argc, char *argv[]){
 		}
 
 		if(ready >= 0){
-			if(receiveHeartbeat(ready, monitor) != -1){
+			int r = receiveHeartbeat(ready, monitor);
+			if(r != HB_NOT_FOUND){
+				if(r >= 0){
+					startRecovery(monitor[r], fs, recovery);
+				}
 				continue;
 			}
 			if(handlePaxosMessage(ready, monitor, recovery, fs) == -1)
@@ -198,20 +233,11 @@ int main(int argc, char *argv[]){
 				Monitored &mon = *i;
 				mon.psm->checkTimeout(4); // proposer state machine
 
-				if(mon.hbc == NULL) // heartbeat client
+				if(mon.hbc == NULL) // proposing or recovered
 					continue;
 				if(mon.hbc->isExpired(HEARTBEAT_PERIOD * 2) == 0)
 					continue;
-				fs.unregisterFD((mon.hbc)->getFD());
-				delete mon.hbc;
-				mon.hbc = NULL;
-				recovery.deleteBroker(mon.ip, mon.port);
-
-				PaxosResult r = mon.psm->newProposal(
-				new RecoveryProposal(mon.psm->getVotingVersion(),
-				mon.ip, mon.port, discoverBackup(), 5672, 50) //TODO: discover score, port
-				);
-				handleCommit(r, mon, fs, recovery);
+				startRecovery(mon, fs, recovery);
 			}
 			continue;
 		}

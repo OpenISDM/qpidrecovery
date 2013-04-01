@@ -76,4 +76,10 @@ int acceptRead(int sfd, char *ip, T &msg){
 	return newsfd;
 }
 
+#ifndef STDCOUT
+#define STDCOUT(T) (std::cout << T)
+#define STDCOUTFLUSH() (std::cout.flush())
 #endif
+
+#endif
+

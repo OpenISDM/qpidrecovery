@@ -82,6 +82,8 @@ int tcpserversocket(unsigned port){
 	int sfd=createsocket(port, SOCK_STREAM);
 	if(sfd<0)
 		return -1;
+	if(listen(sfd, 128)<0)
+		return -1;
 	return sfd;
 }
 
@@ -89,8 +91,6 @@ int tcpaccept(int sfd, char* from){
 	struct sockaddr_in addr;
 	socklen_t addrsize=sizeof(struct sockaddr_in);
 	int newsfd;
-	if(listen(sfd, 128)<0)
-		return -1;
 
 	newsfd=accept(sfd, (struct sockaddr*)&addr, &addrsize);
 	if(newsfd<0)

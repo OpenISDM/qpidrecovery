@@ -42,7 +42,7 @@ int sendPaxosHeader(int sfd, enum PaxosMessageType t, unsigned v, const char *m)
 
 int receivePaxosHeader(int sfd, struct PaxosHeader &ph){
 	const int sph = sizeof(struct PaxosHeader);
-	return read(sfd, &ph, sph) == sph? 0: -1;
+	return read(sfd, &ph, sph) == sph? sph: -1;
 }
 
 // class PaxosMessage
@@ -206,8 +206,8 @@ enum PaxosResult AcceptorStateMachine::handleMessage(int replysfd, PaxosMessage 
 	struct PaxosHeader &ph = m.header;
 	if(isRecepient(ph.name) == 0)
 		return IGNORED;
-
-	if(this->getVotingVersion() < ph.version){ // missed changing acceptor 
+STDCOUT(this->getVotingVersion() << " "<< ph.version << "\n");
+	if(this->getVotingVersion() < ph.version){ // missed changing acceptor
 		// this->initialState(ph.version);
 		// reply the proposer
 		return HANDLED;

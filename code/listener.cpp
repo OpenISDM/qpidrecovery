@@ -74,31 +74,29 @@ void Listener::brokerDisconnected(const Broker& broker){
 }
 
 void Listener::newPackage(const std::string& name){
-	cout << "newPackage: " << name << endl;
-	cout << getSecond() <<endl;
+	//cout << "newPackage: " << name << endl;
+	//cout << getSecond() <<endl;
 }
 
 void Listener::newClass(const ClassKey& classKey){
-	cout << "newClass: key=" << classKey << endl;
-	cout << getSecond() <<endl;
+	//cout << "newClass: key=" << classKey << endl;
+	//cout << getSecond() <<endl;
 }
 
 void Listener::newAgent(const Agent& agent){
-	cout << "newAgent: " << agent << endl;
-	cout << getSecond() << endl;
+	//cout << "newAgent: " << agent << endl;
+	//cout << getSecond() << endl;
 }
 void Listener::delAgent(const Agent& agent){
-	cout << "delAgent: " << agent << endl;
-	cout << getSecond() << endl;
+	//cout << "delAgent: " << agent << endl;
+	//cout << getSecond() << endl;
 }
 
 void Listener::objectProps(Broker& broker, Object& object){
 	//discover new objects here
-	cout << "objectProps: broker=" << broker << " object=" << object << endl;
+	//cout << "objectProps: broker=" << broker << " object=" << object << endl;
 	cout << getSecond() << endl;
 
-	//discover new objects here
-	//cout << "objectProps: broker=" << broker << " object=" << object << endl;
 	enum ObjectType t = objectStringToType(object.getClassKey().getClassName());
 	ObjectInfo *oi = newObjectInfoByType(&object, &broker, t);
 	if(oi == NULL)
@@ -109,8 +107,8 @@ void Listener::objectProps(Broker& broker, Object& object){
 }
 
 void Listener::objectStats(Broker& broker, Object& object){
-	cout << "objectStats: broker=" << broker << " object=" << object << endl;
-	cout << getSecond() <<endl;
+	//cout << "objectStats: broker=" << broker << " object=" << object << endl;
+	//cout << getSecond() <<endl;
 /*
 return;
 	string classname = object.getClassKey().getClassName();
@@ -125,8 +123,8 @@ return;
 */
 }
 void Listener::event(Event& event){
-	cout << event << endl;
-	cout << getSecond() <<endl;
+	//cout << event << endl;
+	//cout << getSecond() <<endl;
 	/*
 	const string bind = "bind";
 	const struct SchemaClass* sc = event.getSchema();

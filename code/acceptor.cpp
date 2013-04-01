@@ -50,27 +50,31 @@ static int handlePaxosMessage(int ready, NVector &accname){
 			return 0;
 		cerr << "error: unknown paxos result\n";
 	}
-	return 0;
+	return -1;
 }
 
 int main(int argc,char *argv[]){
+	replaceSIGPIPE();
+
 	int requestsfd, paxossfd;
-	FileSelector fs(0, 0);
+	FileSelector fs(0, 1000);
 	NVector accname;
 
 	requestsfd = tcpserversocket(REQUEST_ACCEPTOR_PORT);
 	paxossfd = tcpserversocket(PAXOS_PORT);
 	if(requestsfd == -1 || paxossfd == -1){
-		cerr << "error: request acceptor port\n";
+		cerr << "error: port\n";
 		return -1;
 	}
 
 	fs.registerFD(requestsfd);
 	fs.registerFD(paxossfd);
 	while(1){
+STDCOUT(".");
+STDCOUTFLUSH();
 		int ready = fs.getReadReadyFD();
-
 		if(ready == requestsfd){
+STDCOUT("requestfd " << ready << "\n");
 			char from[IP_LENGTH];
 			struct ParticipateRequest r;
 			int newsfd;
@@ -84,16 +88,22 @@ int main(int argc,char *argv[]){
 		}
 		if(ready == paxossfd){
 			int newpaxossfd = tcpaccept(paxossfd, NULL);
+STDCOUT("new paxosfd " << ready << " " << newpaxossfd << "\n");
 			fs.registerFD(newpaxossfd);
 			continue;
 		}
 		if(ready >= 0){
-			if(handlePaxosMessage(ready, accname) == -1)
+STDCOUT("paxosfd " << ready << "\n");
+			if(handlePaxosMessage(ready, accname) == -1){
 				fs.unregisterFD(ready);
+				close(ready);
+STDCOUT("paxosfd " << ready << " closed\n");
+			}
 			continue;
 		}
 
 		if(ready == GET_READY_FD_TIMEOUT){
+STDCOUT("timeout\n");
 			fs.resetTimeout(1000, 0);
 			continue;
 		}

@@ -9,7 +9,7 @@ using namespace std;
 HeartbeatClient::HeartbeatClient(const char *ip){
 	strcpy(this->ip, ip);
 	sfd = tcpconnect(ip, HEARTBEAT_PORT);
-	this->timestamp = (unsigned)time(NULL);
+	this->timestamp = getSecond();
 }
 
 HeartbeatClient::~HeartbeatClient(){
@@ -21,9 +21,10 @@ int HeartbeatClient::readMessage(){
 	int r;
 	r = read(sfd, &hb, sizeof(struct Heartbeat));
 	if(r == sizeof(struct Heartbeat)){
-		this->timestamp = (unsigned)time(NULL);
-		cout << hb.name << "\n";
+		this->timestamp = getSecond();
+		// cout << hb.name << "\n";
 	}
+	else r = -1;
 	return r;
 }
 

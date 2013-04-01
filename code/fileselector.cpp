@@ -32,8 +32,8 @@ int FileSelector::getReadReadyFD(){
 	}
 
 	r = select(maxfd + 1, &rset, NULL, NULL, &tv);
-	timeout_s = tv.tv_sec;
-	timeout_us = tv.tv_usec;
+	this->timeout_s = tv.tv_sec;
+	this->timeout_us = tv.tv_usec;
 
 	if(r == 0) // timeout
 		return GET_READY_FD_TIMEOUT;
