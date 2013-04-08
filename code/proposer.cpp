@@ -2,10 +2,12 @@
 #include<iostream>
 #include<vector>
 #include<cstring>
+#include<cstdio>
 
 #include"common.h"
 #include"fileselector.h"
 #include"recoverymanager.h"
+#include"proposer_link.h"
 #include"paxos.h"
 #include"memoryusage.h"
 #include"socketlib.h"
@@ -21,7 +23,20 @@ public:
 	char name[SERVICE_NAME_LENGTH];
 	char ip[IP_LENGTH];
 	unsigned port;
+	vector<int> informlist; //socket, inform when ip:port changed
 
+private:
+	int inform(int sfd){
+		const int rasize = sizeof(struct ReplyAddress);
+		struct ReplyAddress r;
+		strcpy(r.name, this->name);
+		strcpy(r.ip, this->ip);
+		r.port = this->port;
+		if(write(sfd, &r, rasize) != rasize)
+			return -1;
+		return 0;
+	}
+public:
 	Monitored(ProposerStateMachine *proposer, HeartbeatClient *heartbeat,
 	const char *servicename, const char *brokerip, unsigned brokerport){
 		this->psm = proposer;
@@ -29,9 +44,45 @@ public:
 		strcpy(this->name, servicename);
 		strcpy(this->ip, brokerip);
 		this->port = brokerport;
+		informlist.clear();
+	}
+
+	void addInformList(int newsfd){
+		if(this->inform(newsfd) < 0){
+			close(newsfd);
+			return;
+		}
+		informlist.push_back(newsfd);
+	}
+
+	void informAll(){
+		for(unsigned i = 0; i != this->informlist.size(); i++){
+			if(this->inform(informlist[i]) < 0){
+				close(this->informlist[i]);
+				this->informlist.erase(this->informlist.begin() + i);
+				i--;
+			}
+		}
 	}
 };
 typedef vector<Monitored> MVector;
+
+struct ProposerList{
+	char ip[IP_LENGTH];
+	unsigned port;
+	int sfd;
+	struct ReplyProposer plist;
+};
+typedef vector<struct ProposerList> PVector;
+
+static struct ProposerList *searchProposerListByIPPort(PVector &dstproposers,
+const char *searchip, unsigned searchport){
+	for(PVector::iterator i = dstproposers.begin(); i != dstproposers.end(); i++){
+		if(strcmp((*i).ip, searchip) == 0 && (*i).port == searchport)
+			return &(*i);
+	}
+	return NULL;
+}
 
 static void createProposer(const char *name, unsigned votingver,
 unsigned committedver, unsigned nacc, const char (*acc)[IP_LENGTH],
@@ -58,13 +109,12 @@ MVector &monitor, const char *from, unsigned brokerport, FileSelector &fs){
 	monitor.push_back(mon);
 }
 
-static int searchServiceByName(MVector &monitor, const char *searchname){
+static Monitored *searchServiceByName(MVector &monitor, const char *searchname){
 	for(MVector::iterator i = monitor.begin(); i != monitor.end(); i++){
-		if(strcmp((*i).name, searchname) != 0)
-			continue;
-		return (i - monitor.begin());
+		if(strcmp((*i).name, searchname) == 0)
+			return &(*i);
 	}
-	return -1;
+	return NULL;
 }
 
 static int handleCommit(const enum PaxosResult r, Monitored &mon, FileSelector &fs,
@@ -76,6 +126,7 @@ STDCOUT("commit at " << getSecond() << "\n");
 	const enum ProposalType ptype = p->getType();
 	if(ptype == RECOVERYPROPOSAL){
 STDCOUT("recovery proposal\n");
+		// change Monitored
 		RecoveryProposal *rp = (RecoveryProposal*)p;
 		strcpy(mon.ip, rp->getBackupIP());
 		mon.port = rp->getBackupPort();
@@ -87,6 +138,8 @@ STDCOUT("recovery begins at " << getSecond() << " \n");
 			mon.psm->sendCommitment();
 STDCOUT("recovery ends at " << getSecond() << "\n");
 		}
+		mon.informAll();
+STDCOUT("inform all\n");
 	}
 	if(ptype == ACCEPTORCHANGEPROPOSAL){
 STDCOUT("acceptor change\n");
@@ -139,6 +192,41 @@ STDCOUT("recovery proposal at " << getSecond() << "\n");
 	handleCommit(r, mon, fs, recovery);
 }
 
+static int listenProposerList(PVector &dstproposers, char* dstip, unsigned dstport, FileSelector &fs){
+	struct ProposerList pl;
+	memset(&pl, 0 ,sizeof(struct ProposerList));
+	strcpy(pl.ip, dstip);
+	pl.port = dstport;
+	pl.sfd = tcpconnect(dstip, QUERY_PROPOSER_PORT);
+	if(pl.sfd < 0){
+		cerr << "error: listening proposer list\n";
+		return -1;
+	}
+	fs.registerFD(pl.sfd);
+	dstproposers.push_back(pl);
+	return 0;
+}
+
+// return 1 if handled, -1 if error, 0 if not handled
+static int readProposerList(int ready, PVector &dstproposers, FileSelector &fs){
+	for(PVector::iterator i = dstproposers.begin(); i != dstproposers.end(); i++){
+		if((*i).sfd != ready)
+			continue;
+
+		const int rpsize = sizeof(ReplyProposer);
+		int r = read(ready, &((*i).plist), rpsize);
+		if(r == rpsize){
+			return 1;
+		}
+		// if error
+		fs.unregisterFD(ready);
+		close(ready);
+		dstproposers.erase(i);
+		return -1;
+	}
+	return 0;
+}
+
 // return -1 if not found, -2 if ok, >=0 if error
 #define HB_NOT_FOUND (-1)
 #define HB_HANDLED (-2)
@@ -161,6 +249,8 @@ int main(int argc, char *argv[]){
 	int requestsfd, querysfd, recoveryfd;
 	FileSelector fs(0, 0);
 	MVector monitor;
+	PVector dstproposers;
+	LinkDstListener dstlistener(fs);
 	RecoveryManager recovery;
 
 	requestsfd = tcpserversocket(REQUEST_PROPOSER_PORT);
@@ -171,6 +261,7 @@ int main(int argc, char *argv[]){
 	fs.registerFD(requestsfd);
 	fs.registerFD(querysfd);
 	while(1){
+DELAY();
 STDCOUT(".");
 STDCOUTFLUSH();
 		int ready = fs.getReadReadyFD();
@@ -188,19 +279,31 @@ STDCOUT(ready << "(requestsfd)\n");
 				monitor, from, r.brokerport, fs);
 
 				recovery.addBroker(from, r.brokerport);
+				// subscribe proposer list from newly added link destination
+				string fromurl = IPPortToUrl(from, r.brokerport);
+				for(int i = recovery.firstLinkInfo(fromurl);
+				i >= 0;
+				i = recovery.nextLinkInfo(fromurl, i)){
+					char dstip[IP_LENGTH];
+					unsigned dstport;
+					urlToIPPort(recovery.getLinkDst(i), dstip,dstport);
+					listenProposerList(dstproposers, dstip, dstport, fs);
+				}
 			}
 			continue;
 		}
 		if(ready == querysfd){
 STDCOUT(ready << " (querysfd)\n");
 			char from[IP_LENGTH];
-			struct QueryAddress r;
+			struct ReplyAddress r;
 			int newsfd;
-			newsfd = acceptRead<struct QueryAddress>(querysfd, from, r);
+			newsfd = acceptRead<struct ReplyAddress>(querysfd, from, r);
 			if(newsfd >= 0){
-				if(searchServiceByName(monitor, r.name) != -1)
-					write(newsfd, &r, sizeof(struct QueryAddress));
-				close(newsfd);
+				Monitored *m = searchServiceByName(monitor, r.name);
+				if(m != NULL)
+					m->addInformList(newsfd);
+				else
+					close(newsfd);
 			}
 			continue;
 		}
@@ -211,31 +314,66 @@ STDCOUT(ready << "(recoverysfd)\n");
 				BrokerDisconnectionEvent *bde = (BrokerDisconnectionEvent*)le;
 				recovery.deleteBroker(bde->brokerip, bde->brokerport);
 			}
+			if(le->getType() == LINKDOWN){
+				LinkDownEvent *lde = (LinkDownEvent*)le;
+				struct ProposerList *p =
+				searchProposerListByIPPort(dstproposers, lde->dstip, lde->dstport);
+				if(p != NULL)
+					dstlistener.listenAddressChange(p->plist,
+					lde->srcip, lde->srcport, lde->dstip, lde->dstport);
+				else
+					cerr << "unknown link dest\n";
+			}
 			delete le;
 			continue;
 		}
 
 		if(ready >= 0){
-			int r = receiveHeartbeat(ready, monitor);
-			if(r != HB_NOT_FOUND){
-				if(r >= 0){
-					startRecovery(monitor[r], fs, recovery);
+			{
+				int r = receiveHeartbeat(ready, monitor);
+				if(r != HB_NOT_FOUND){
+					if(r >= 0){ // read ready fd error
+						startRecovery(monitor[r], fs, recovery);
+					}
+					continue;
 				}
-				continue;
 			}
+			{
+				char newip[IP_LENGTH], oldip[IP_LENGTH], srcip[IP_LENGTH];
+				unsigned newport, oldport, srcport;
+				int r = dstlistener.readAddressChange(ready,
+				srcip, srcport, oldip, oldport, newip, newport);
+				if(r != 0){
+					if(r != 1)
+						continue;
+					recovery.reroute(srcip, srcport,
+					oldip, oldport,	newip, newport);
+					continue;
+				}
+			}
+			if(readProposerList(ready, dstproposers, fs) != 0)
+				continue;
 			if(handlePaxosMessage(ready, monitor, recovery, fs) == -1)
 				fs.unregisterFD(ready);
 			continue;
 		}
 		if(ready == GET_READY_FD_TIMEOUT){
+			static unsigned totaltime = 0;
+			totaltime+=4;
+			if(totaltime > 60) // 120 seconds
+				totaltime = 0;
+
 			fs.resetTimeout(4,0);
 			for(MVector::iterator i = monitor.begin(); i != monitor.end(); i++){
 				Monitored &mon = *i;
 				mon.psm->checkTimeout(4); // proposer state machine
 
+				if(totaltime == 0)
+					mon.informAll(); // check disconnection
+
 				if(mon.hbc == NULL) // proposing or recovered
 					continue;
-				if(mon.hbc->isExpired(HEARTBEAT_PERIOD * 2) == 0)
+				if(mon.hbc->isExpired(HEARTBEAT_PERIOD * 2) == 0) // no heartbeat
 					continue;
 				startRecovery(mon, fs, recovery);
 			}
@@ -243,3 +381,4 @@ STDCOUT(ready << "(recoverysfd)\n");
 		}
 	}
 }
+

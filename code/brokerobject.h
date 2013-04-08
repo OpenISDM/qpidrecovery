@@ -6,6 +6,9 @@
 using namespace std;
 using namespace qpid::console;
 
+void urlToIPPort(string url, char *ip, unsigned &port);
+string IPPortToUrl(const char*ip, unsigned port);
+
 string linkObjectDest(Object& o);
 
 //landmark_object.cpp

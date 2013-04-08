@@ -43,11 +43,12 @@ struct ParticipateRequest{
 };
 
 struct ReplyProposer{
+	char name[SERVICE_NAME_LENGTH];
 	unsigned length;
 	char ip[MAX_PROPOSERS][IP_LENGTH];
 };
 
-struct QueryAddress{
+struct ReplyAddress{
 	char name[SERVICE_NAME_LENGTH];
 	char ip[IP_LENGTH];
 	unsigned port;
@@ -80,6 +81,9 @@ int acceptRead(int sfd, char *ip, T &msg){
 #define STDCOUT(T) (std::cout << T)
 #define STDCOUTFLUSH() (std::cout.flush())
 #endif
+
+#define DELAY()
+// #define DELAY() usleep(10000)
 
 #endif
 

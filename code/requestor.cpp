@@ -18,13 +18,17 @@ static unsigned copyIPArray(char (*ip)[IP_LENGTH], HBCVector &v){
 	return v.size();
 }
 
-static void replyProposerList(int replysfd, HBCVector &proposers){
+static int replyProposerList(int replysfd, const char *servicename, HBCVector &proposers){
 	struct ReplyProposer r;
 	memset(&r, 0, sizeof(r));
+	strcpy(r.name, servicename);
 	r.length = copyIPArray(r.ip, proposers);
 
-	if(write(replysfd, &r, sizeof(r)) != sizeof(r))
+	if(write(replysfd, &r, sizeof(r)) != sizeof(r)){
 		cerr << "replyProposerList: write error\n";
+		return -1;
+	}
+	return 0;
 }
 
 // -1 if error, 0 if ok
@@ -178,6 +182,7 @@ int main(int argc,char *argv[]){
 	const char *servicename = argv[1];
 	const unsigned brokerport = 5672;
 	int querysfd;
+	vector<int> replysfd;
 	FileSelector fs(0, 0);
 
 	if(expected_acceptors > MAX_ACCEPTORS || expected_proposers > MAX_PROPOSERS){
@@ -196,6 +201,7 @@ int main(int argc,char *argv[]){
 	ProposerStateMachine *psm = new ProposerStateMachine(fs, servicename, currentversion + 1,
 	new AcceptorChangeProposal(currentversion, 0, NULL)); // version = 0, acceptor set = empty
 	while(1){
+DELAY();
 STDCOUT(".");
 STDCOUTFLUSH();
 		if(acceptors.size() < expected_acceptors){
@@ -224,6 +230,14 @@ STDCOUT("add proposers\n");
 			HeartbeatClient *hbc = new HeartbeatClient(newip);
 			fs.registerFD(hbc->getFD());
 			proposers.push_back(hbc);
+			// inform new proposer
+			for(unsigned i = 0; i != replysfd.size(); i++){
+				if(replyProposerList(replysfd[i], servicename, proposers) < 0){
+					close(replysfd[i]);
+					replysfd.erase(replysfd.begin() + i);
+					i--;
+				}
+			}
 			continue;
 		}
 
@@ -242,10 +256,14 @@ STDCOUT("add proposers\n");
 		}
 		if(ready == querysfd){
 STDCOUT(ready << "(query)\n");
-			int replysfd = tcpaccept(querysfd, NULL);
-			if(replysfd >= 0)
-				replyProposerList(replysfd, proposers);
-			close(replysfd);
+			int newsfd = tcpaccept(querysfd, NULL);
+			if(newsfd < 0)
+				continue;
+			if(replyProposerList(newsfd, servicename, proposers) < 0){
+				close(newsfd);
+				continue;
+			}
+			replysfd.push_back(newsfd);
 			continue;
 		}
 		if(ready >= 0){// receive heartbeat or paxos

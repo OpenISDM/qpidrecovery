@@ -5,6 +5,22 @@
 #include <cstring>
 #include <ctime>
 
+void urlToIPPort(string url, char *ip, unsigned &port){
+	unsigned i;
+	for(i = 0; url[i]!=':'; i++)ip[i] = url[i];
+	ip[i] = '\0';
+	port=0;
+	for(i++; i < url.length(); i++)
+		port = port * 10 + (url[i] - '0');
+}
+
+string IPPortToUrl(const char*ip, unsigned port){
+	char s[64];
+	sprintf(s, "%s:%u", ip, port);
+	string r = s;
+	return r;
+}
+
 static string utos(unsigned u){
 	char s[16];
 	sprintf(s, "%u", u);

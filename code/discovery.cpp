@@ -8,8 +8,8 @@ const char *discoverProposer(){
 	return "127.0.0.1";
 }
 
-struct{
-	char *ip;
+static struct{
+	const char *ip;
 	unsigned port;
 }backuplist[] = {
 	{"127.0.0.1", 5673},

@@ -10,7 +10,8 @@ using namespace qpid::console;
 
 enum ListenerEventType{
 	BROKERDISCONNECTION = 142857,
-	OBJECTPROPERTY
+	OBJECTPROPERTY,
+	LINKDOWN
 //	BYTEDEQUEUE,
 //	BYTEENQUEUE,
 };
@@ -42,6 +43,15 @@ public:
 	~ObjectPropertyEvent();
 	enum ObjectType objtype;
 	ObjectInfo *getObjectInfo();
+};
+
+class LinkDownEvent: public ListenerEvent{
+public:
+	char srcip[32];
+	unsigned srcport;
+	char dstip[32];
+	unsigned dstport;
+	LinkDownEvent(string srcurl, string dsturl);
 };
 
 class Listener: public ConsoleListener {

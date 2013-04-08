@@ -70,6 +70,7 @@ int main(int argc,char *argv[]){
 	fs.registerFD(requestsfd);
 	fs.registerFD(paxossfd);
 	while(1){
+DELAY();
 STDCOUT(".");
 STDCOUTFLUSH();
 		int ready = fs.getReadReadyFD();

@@ -2,6 +2,8 @@
 #include<unistd.h>
 #include<iostream>
 #include"timestamp.h"
+#include"messagecopy.h"
+
 
 using namespace std;
 
@@ -12,6 +14,7 @@ int RecoveryManager::getBrokerIndexByAddress(BrokerAddress& ba){
 	}
 	return -1;
 }
+
 /*
 int RecoveryManager::getBrokerIndexByUrl(string url){
 	for(unsigned i = 0; i < this->bavec.size(); i++){
@@ -131,12 +134,59 @@ int RecoveryManager::deleteBroker(const char *ip, unsigned port){
 	return 0;
 }
 
+static int getIndexByObjectId(vector<ObjectInfo*> &objs, ObjectId &oid){
+	for(unsigned i = 0; i != objs.size(); i++){
+		if(oid == objs[i]->getId())
+			return (signed)i;
+	}
+	return -1;
+}
+
+void RecoveryManager::copyBridges(Object::Vector &linkobjlist,
+string oldsrc, string newsrc, bool changedst, string olddst, string newdst){
+	int copycount=0;
+	cout << this->bridges.size() << " bridges in total\n";
+	for(vector<ObjectInfo*>::iterator i = this->bridges.begin(); i != this->bridges.end(); i++){
+		string src = (*i)->getBrokerUrl();
+		if(oldsrc.compare(src) != 0)
+			continue;
+
+		string dst;
+		{// find dst
+			ObjectId oldlinkid = ((BridgeInfo*)(*i))->getLinkId();
+			int j = getIndexByObjectId(this->links, oldlinkid);
+			if(j < 0)
+				continue;
+			if(src.compare(this->links[j]->getBrokerUrl()) != 0){
+				cerr << "link id & broker url not match\n";
+				continue;
+			}
+			dst = ((LinkInfo*)(this->links[j]))->getLinkDestUrl();
+		}
+		if(changedst == true && olddst.compare(dst) != 0)
+			continue;
+		// (*i) is a bridge from oldsrc to dst
+		cout << src << "->" << dst << "\n";
+		for(Object::Vector::iterator j = linkobjlist.begin(); j != linkobjlist.end(); j++){
+			if(
+			(j->getBroker())->getUrl().compare(newsrc) == 0 &&
+			linkObjectDest(*j).compare(changedst == true? newdst: dst) == 0){
+				(*i)->copyTo(&(*j));
+				copycount++;
+				break;
+			}
+		}
+	}
+	cout << copycount << " bridges copied\n";
+}
+
 int RecoveryManager::copyObjects(const char *failip, unsigned failport,
 const char *backupip, unsigned backupport){
 	BrokerAddress oldba(failip, failport);
-	BrokerAddress newba(backupip,backupport);
-	cout << "failure: " << oldba.getAddress() << "\n";
-	cout << "replace: " << newba.getAddress() << "\n";
+	BrokerAddress newba(backupip, backupport);
+	string newurl = newba.getAddress(), oldurl = oldba.getAddress();
+	cout << "failure: " << oldurl << "\n";
+	cout << "replace: " << newurl << "\n";
 	cout << "start recovery!\n";
 
 	int copycount;
@@ -156,18 +206,7 @@ const char *backupip, unsigned backupport){
 		return -1;
 	}
 	Object &backupbrokerobj = (backupbrokerobjlist[0]);
-/*
-	for(unsigned i=0; i != links.size(); i++){ // link to failed broker
-		string dst = ((LinkInfo*)(links[i]))->getLinkDestUrl();
-		if(old.getAddress().compare(dst) != 0){
-			continue;
-		}
-		// objptr = 
-		((LinkInfo*)(links[i]))->copyToNewDest(objptr,
-		(string)(newba.ip), newba.port);
-		copycount++;
-	}
-*/
+
 	{
 		vector<ObjectInfo*> *vecs[4] =
 		{&(this->exchanges), &(this->queues), &(this->bindings), &(this->links)};
@@ -177,9 +216,9 @@ const char *backupip, unsigned backupport){
 			copycount=0;
 			cout << v.size() <<" objects(" <<i << ") in total\n";
 			for(vector<ObjectInfo*>::iterator j = v.begin(); j != v.end(); j++){
-				if(oldba.getAddress().compare((*j)->getBrokerUrl()) != 0)
+				if(oldurl.compare((*j)->getBrokerUrl()) != 0)
 					continue;
-				if(i == 2){//bindings
+				if(i == 2){// bindings
 					if(((BindingInfo*)(*j))->setBindingNames(
 					this->exchanges, this->queues) == 0)
 						continue;
@@ -192,86 +231,65 @@ const char *backupip, unsigned backupport){
 	}
 
 	//assume backupsm has received link objects
-	copycount=0;
+
 	Object::Vector objlist;
 	backupsm.getObjects(objlist, "link", backupbroker);
-	cout << this->bridges.size() << " bridges in total\n";
-	for(vector<ObjectInfo*>::iterator i = this->bridges.begin(); i != this->bridges.end(); i++){
-		string src = (*i)->getBrokerUrl(), dst;
-		if(oldba.getAddress().compare(src) != 0)
-			continue;
+	this->copyBridges(objlist, oldurl, newurl, false);
 
-		{// search dst url
-			ObjectId oldlinkid = ((BridgeInfo*)(*i))->getLinkId();
-			vector<ObjectInfo*>::iterator j;
-			for(j = this->links.begin(); j != this->links.end(); j++){// search failed link
-				if((*j)->getId() == oldlinkid &&
-				(*j)->getBrokerUrl().compare(src) == 0)
-					break;
-			}
-			if(j == this->links.end()){
-				cerr << "disconnectHandler: cannot find link by id\n";
-				cerr.flush();
+	//client messages
+	for(unsigned i = 0; i < objlist.size()/* && i < 1*/; i++){
+		MessageCopier msgcopy(newurl, linkObjectDest(objlist[i]));
+		for(vector<ObjectInfo*>::iterator j = this->queues.begin(); j != this->queues.end(); j++){
+			if(oldurl.compare((*j)->getBrokerUrl()) != 0)
 				continue;
-			}
-			dst = ((LinkInfo*)(*j))->getLinkDestUrl();
+			msgcopy.copyQueueMessage(((QueueInfo*)(*j))->getName());
 		}
-		cout << src << "->" << dst << "\n";
-		for(Object::Vector::iterator j = objlist.begin(); j != objlist.end(); j++){
-			if(
-			src.compare((j->getBroker())->getUrl()) == 0 &&
-			dst.compare(linkObjectDest(*j)) == 0){
-				(*i)->copyTo(&(*j));
-				break;
-			}
-		}
-		copycount++;
 	}
-/*
-	copycount=0;
-	cout << bridges.size() << " bridges in total\n";
-	for(unsigned i = 0; i != bridges.size(); i++){
-		string dest, src = bridges[i]->getBrokerUrl(), newdest, newsrc;
-		ObjectId oldlinkid = ((BridgeInfo*)(bridges[i]))->getLinkId();
-		unsigned j;
-		for(j = 0; j < links.size(); j++){// search failed link
-			if(links[j]->getId() == oldlinkid &&
-			links[j]->getBrokerUrl().compare(src) == 0)
-				break;
-		}
-		if(j >= links.size()){
-			cerr << "disconnectHandler: cannot find link by id\n";cerr.flush();
-			continue;
-		}
-		dest=((LinkInfo*)(links[j]))->getLinkDestUrl();
-		if(fba.getAddress().compare(src)==0){
-			newsrc = rba.getAddress();
-			newdest = dest;
-		}
-		else if(fba.getAddress().compare(dest)==0){
-			newsrc = src;
-			newdest = rba.getAddress();
-		}
-		else{
-			continue;
-		}
-		cout << src << " ->"<< dest << newsrc << "->" << newdest << "\n";
-		{
-			int j = getBrokerIndexByString(bavec, newsrc);
-if(j==-1){cerr<< "j error bridge\n";cerr.flush();}
-			sm.getObjects(objlist, "link", bavec[j].pointer);
-			objptr = findLinkInList(objlist, newsrc, newdest);
-if(objptr==NULL){cerr<<"linkobj error\n";cerr.flush();}
-		}
-		if(objptr == NULL)
-			continue;
-		bridges[i]->copyTo(objptr);
-		copycount++;
-	}
-*/
-	cout << copycount << " bridges copied\n";
 	return 0;
 }
+
+int RecoveryManager::reroute(const char *srcip, unsigned srcport,
+const char *oldip, unsigned oldport, const char *newip, unsigned newport){
+	string srcurl = IPPortToUrl(srcip, srcport);
+	string newurl = IPPortToUrl(newip, newport);
+	string oldurl = IPPortToUrl(oldip, oldport);
+	// find link from src to old
+	vector<ObjectInfo*>::iterator linkiter;
+
+	for(linkiter = this->links.begin(); linkiter != this->links.end(); linkiter++){
+		string linksrc = ((LinkInfo*)(*linkiter))->getBrokerUrl();
+		string linkdst = ((LinkInfo*)(*linkiter))->getLinkDestUrl();
+		if(srcurl.compare(linksrc) == 0 && oldurl.compare(linkdst) == 0)
+			break;
+	}
+	if(linkiter == this->links.end()){
+		cerr << "reroute error: old link not found\n";
+		return -1;
+	}
+	cout << "old LinkInfo found\n";
+
+	Object::Vector linkobjlist;
+	{// find broker object
+		BrokerAddress ba((string)srcip, srcport);
+		int i = this->getBrokerIndexByAddress(ba);
+		if(i == -1)
+			return -1;
+		Broker* srcbroker = this->bavec[i].pointer;
+		Object::Vector srcbrokerobjlist;
+		srcbrokerobjlist.clear();
+		this->sm->getObjects(srcbrokerobjlist, "broker", srcbroker);
+		if(srcbrokerobjlist.size() != 1)
+			cerr << "reroute error: source broker object list\n";
+		((LinkInfo*)(*linkiter))->copyToNewDest(&(srcbrokerobjlist[0]), newip, newport);	
+		this->sm->getObjects(linkobjlist, "link", srcbroker);
+	}
+	cout << "New link created\n";
+
+	this->copyBridges(linkobjlist, srcurl, srcurl, true, oldurl, newurl);
+
+	return 0;
+}
+
 
 int RecoveryManager::getEventFD(){
 	return this->eventpipe[0];
@@ -289,8 +307,29 @@ ListenerEvent *RecoveryManager::handleEvent(){
 		break;
 	case BROKERDISCONNECTION:
 		break;
+	case LINKDOWN:
+		break;
 	}
 	return le;
+}
+
+string RecoveryManager::getLinkDst(int index){
+	return ((LinkInfo*)(this->links[index]))->getLinkDestUrl();
+}
+
+int RecoveryManager::firstLinkInfo(string srcurl){
+	return nextLinkInfo(srcurl, -1);
+}
+
+int RecoveryManager::nextLinkInfo(string srcurl, int index){
+	index++;
+	while(((unsigned)index) < this->links.size()){
+		if(srcurl.compare(links[index]->getBrokerUrl()) == 0){
+			return index;
+		}
+		index++;
+	}
+	return -1;
 }
 
 RecoveryManager::RecoveryManager(){

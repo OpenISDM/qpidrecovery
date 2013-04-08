@@ -14,9 +14,9 @@ heartbeat: heartbeat_main.o heartbeat_tester.o $(COMMONOBJS)
 	g++ heartbeat_main.o $(COMMONOBJS) -o heartbeat
 	g++ heartbeat_tester.o $(COMMONOBJS) -o heartbeat_tester
 
-proposer: proposer.o $(COMMONOBJS) $(PAXOSOBJS) $(RECOVERYOBJS)
-	g++ proposer.o $(COMMONOBJS) $(PAXOSOBJS) $(RECOVERYOBJS) \
-	-lqpidclient -lqmfconsole -lqpidcommon -o proposer
+proposer: proposer.o proposer_link.o messagecopy.o $(COMMONOBJS) $(PAXOSOBJS) $(RECOVERYOBJS)
+	g++ proposer.o proposer_link.o messagecopy.o $(COMMONOBJS) $(PAXOSOBJS) $(RECOVERYOBJS) \
+	-lqpidclient -lqpidmessaging -lqpidtypes -lqmfconsole -lqpidcommon -o proposer
 
 acceptor: acceptor.o $(COMMONOBJS) $(PAXOSOBJS)
 	g++ acceptor.o $(COMMONOBJS) $(PAXOSOBJS) -o acceptor

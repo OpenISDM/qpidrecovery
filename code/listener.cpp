@@ -25,15 +25,6 @@ enum ListenerEventType ListenerEvent::getType(){
 	return this->type;
 }
 
-static void urlToIPPort(string url, char *ip, unsigned &port){
-	unsigned i;
-	for(i = 0; url[i]!=':'; i++)ip[i] = url[i];
-	ip[i] = '\0';
-	port=0;
-	for(i++; i < url.length(); i++)
-		port = port * 10 + (url[i] - '0');
-}
-
 BrokerDisconnectionEvent::BrokerDisconnectionEvent(string url):
 ListenerEvent(BROKERDISCONNECTION){
 	urlToIPPort(url, this->brokerip, this->brokerport);
@@ -56,6 +47,11 @@ ObjectPropertyEvent::~ObjectPropertyEvent(){
 		delete this->objinfo;
 }
 
+LinkDownEvent::LinkDownEvent(string srcurl, string dsturl):
+ListenerEvent(LINKDOWN){
+	urlToIPPort(srcurl, this->srcip, this->srcport);
+	urlToIPPort(dsturl, this->dstip, this->dstport);
+}
 
 //class Listener
 
@@ -125,16 +121,20 @@ return;
 void Listener::event(Event& event){
 	//cout << event << endl;
 	//cout << getSecond() <<endl;
-	/*
-	const string bind = "bind";
+	const string linkdownstr = "brokerLinkDown";
 	const struct SchemaClass* sc = event.getSchema();
 	string classname = sc->key.getClassName();
-	cout << "event: " << event << endl;
+//	cout << "event: " << event << endl;
 
-	if(classname.compare(bind) == 0){
-		cout << "event: " << classname << endl <<
-		"  exchange: " << event.attrString("exName") << endl <<
-		"  queue: " << event.attrString("qName") << endl;
-	}*/
+	if(classname.compare(linkdownstr) != 0){
+		return;
+//		cout << "event: " << classname << endl <<
+//		"  exchange: " << event.attrString("exName") << endl <<
+//		"  queue: " << event.attrString("qName") << endl;
+	}
+	ListenerEvent *le = new LinkDownEvent(
+	event.getBroker()->getUrl(),
+	event.attrString("rhost"));
+	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
 }
 
