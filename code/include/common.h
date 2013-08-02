@@ -19,6 +19,11 @@ ping client=5601
 // heartbeat.cpp
 #define HEARTBEAT_PORT        (5640)
 
+// bgtraffic.cpp
+#define BGTRAFFIC_PORT        (5650)
+
+//messagecopy.cpp
+#define MESSAGECOPY_PORT      (5660)
 
 #define SERVICE_NAME_LENGTH (40)
 #define IP_LENGTH (20)
@@ -31,7 +36,7 @@ struct EmptyMessage{
 	int value;
 };
 
-#define MAX_PROPOSERS (1)
+#define MAX_PROPOSERS (9)
 #define MAX_ACCEPTORS (MAX_PROPOSERS * 2 - 1)
 struct ParticipateRequest{
 	char name[SERVICE_NAME_LENGTH]; // name of the requestor
@@ -54,8 +59,17 @@ struct ReplyAddress{
 	unsigned port;
 };
 
+struct CopyMessageRequest{
+	char sourceip[IP_LENGTH];
+	unsigned sourceport;
+	char targetip[IP_LENGTH];
+	unsigned targetport;
+	char sourcename[64];
+	char targetname[64];
+};
+
 /*
-proposer.cpp, acceptor.cpp
+proposer.cpp, acceptor.cpp messagecopy.cpp
 accept connection, read 1 message, and return new socket
 */
 #include"socketlib.h"
@@ -82,8 +96,8 @@ int acceptRead(int sfd, char *ip, T &msg){
 #define STDCOUTFLUSH() (std::cout.flush())
 #endif
 
-#define DELAY()
-// #define DELAY() usleep(10000)
+//#define DELAY()
+#define DELAY() usleep(100)
 
 #endif
 

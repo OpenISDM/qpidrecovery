@@ -2,7 +2,7 @@
 #include"listener.h"
 #include"brokeraddress.h"
 #include"brokerobject.h"
-
+#include<pthread.h>
 
 
 typedef vector<ObjectInfo*> ObjectInfoPtrVec;
@@ -29,9 +29,11 @@ private:
 	// return 1 if ignored, 0 if added
 	int addObjectInfo(ObjectInfo* objinfo, enum ObjectType objtype);
 
+/*
 	void copyBridges(Object::Vector &linkobjlist,
 	string oldsrc, string newsrc,
 	bool changedst = false, string olddst = "", string newdst = "");
+*/
 public:
 	RecoveryManager();
 	~RecoveryManager();
@@ -44,6 +46,10 @@ public:
 
 	int copyObjects(const char *failip, unsigned failport,
 	const char *backupip, unsigned backupport);
+
+	int copyMessages(const char *srcip, unsigned srcport,
+	const char *newip, unsigned newport, 
+	const char *srcobjname, const char *newobjname);
 
 	int reroute(const char *srcip, unsigned srcport,
 	const char *oldip, unsigned oldport, const char *newip, unsigned newport);

@@ -1,4 +1,5 @@
 #include<sys/socket.h>
+#include<sys/types.h>
 #include<arpa/inet.h>
 #include<unistd.h>
 #include<fcntl.h>
@@ -6,9 +7,10 @@
 #include<stdio.h>
 #include<signal.h>
 
-#include<ifaddrs.h>
+#include<netdb.h>
 #define MAX_ADDRESS_LENGTH INET_ADDRSTRLEN
 
+/*
 int getLocalIP(char*ip){
 	struct ifaddrs*i,*j;
 	if(getifaddrs(&i)<0)
@@ -24,6 +26,40 @@ ip[0]='\0';printf("ooooooo\n");fflush(stdout);
 	}
 	freeifaddrs(i);
 	return j==NULL?-1:0;
+}
+*/
+
+int nametoaddr(const char *hostname, char *address){
+	struct addrinfo *addrlist, *addrptr, hint;
+	int ret = -1;
+
+	hint.ai_family = AF_INET;//AF_UNSPEC;
+	hint.ai_socktype = 0;
+	hint.ai_flags = 0;
+	hint.ai_protocol = 0;
+	hint.ai_addrlen = 0;
+	hint.ai_addr = NULL;
+	hint.ai_canonname = NULL;
+	hint.ai_next = NULL;
+
+	if(getaddrinfo(hostname, NULL/*port number*/, &hint, &addrlist) != 0){
+		return ret;
+	}
+	for(addrptr = addrlist; addrptr != NULL; addrptr = addrptr->ai_next){
+		if(addrptr->ai_family != AF_INET ||
+		addrptr->ai_addrlen != sizeof(struct sockaddr_in)){
+			continue;
+		}
+		if(inet_ntop(AF_INET,
+		&(((struct sockaddr_in*)(addrptr->ai_addr))->sin_addr),
+		address, INET_ADDRSTRLEN
+		) != NULL){
+			ret = 0;
+			break;
+		}
+	}
+	freeaddrinfo(addrlist);
+	return ret;
 }
 
 static int fillsockaddr_in(struct sockaddr_in* addr, const char* ipaddr, const uint16_t port){
@@ -119,10 +155,6 @@ int tcpconnect(const char*ipaddr, unsigned port){
 	return sfd;
 }
 
-int shutdownRDWR(int sfd){
-	return shutdown(sfd, SHUT_RDWR);
-}
-
 static void sigpipehandler(int s){
 	printf("sigpipe %d\n", s);
 }
@@ -134,3 +166,6 @@ void replaceSIGPIPE(){
 	first = 0;
 	signal(SIGPIPE, sigpipehandler);
 }
+
+
+

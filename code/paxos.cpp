@@ -2,6 +2,7 @@
 #include"socketlib.h"
 #include"paxos.h"
 #include"timestamp.h"
+#include"common.h"
 #include<unistd.h>
 
 int receivePaxosHeader(int sfd, struct PaxosHeader &ph);
@@ -133,6 +134,7 @@ enum PaxosResult AcceptorStateMachine::checkTimeout(double timeout){
 
 	switch(this->state){
 	case INITIAL:
+		// assert(0);
 	case PHASE3:
 		return IGNORED;
 	case PHASE1:
@@ -154,7 +156,7 @@ enum PaxosResult AcceptorStateMachine::handlePhase1Message(int replysfd, Proposa
 	}
 
 	enum PaxosMessageType reply;
-	if(this->promise->getValue() > p->getValue()){
+	if(this->promise->compare(*p) > 0){
 		delete p;
 		reply = PHASE1NACK;
 	}
@@ -177,10 +179,12 @@ enum PaxosResult AcceptorStateMachine::handlePhase2Message(int replysfd, Proposa
 	}
 
 	enum PaxosMessageType reply;
-	if(this->promise->isEqual(*p) == false){
+	if(this->promise->compare(*p) != 0){
+STDCOUT("acceptor: phase2 nack\n");
 		reply = PHASE2NACK;
 	}
 	else{
+STDCOUT("acceptor: phase2 ack\n");
 		reply = PHASE2ACK;
 		this->timestamp = getSecond();
 		this->state = PHASE2;
@@ -204,9 +208,10 @@ enum PaxosResult AcceptorStateMachine::handlePhase3Message(Proposal *p){
 
 enum PaxosResult AcceptorStateMachine::handleMessage(int replysfd, PaxosMessage &m){
 	struct PaxosHeader &ph = m.header;
-	if(isRecepient(ph.name) == 0)
+	if(this->isRecepient(ph.name) == 0)
 		return IGNORED;
 STDCOUT(this->getVotingVersion() << " "<< ph.version << "\n");
+STDCOUTFLUSH();
 	if(this->getVotingVersion() < ph.version){ // missed changing acceptor
 		// this->initialState(ph.version);
 		// reply the proposer
@@ -236,7 +241,7 @@ STDCOUT(this->getVotingVersion() << " "<< ph.version << "\n");
 // class ProposerStateMachine
 void ProposerStateMachine::initialState(){
 	this->phase1ack = this->phase1nack = 0;
-	this->phase2ack = this->phase1nack = 0;
+	this->phase2ack = this->phase2nack = 0;
 	this->state = INITIAL;
 	this->timestamp = getSecond();
 }
@@ -247,7 +252,7 @@ PaxosStateMachine(m, last, v, INITIAL, getSecond()){
 	this->fs = &fs;
 	this->proposal = new NoProposal();
 	this->phase1ack = this->phase1nack = 0;
-	this->phase2ack = this->phase1nack = 0;
+	this->phase2ack = this->phase2nack = 0;
 	for(unsigned i = 0; i != MAX_ACCEPTORS; i++)
 		accsfd[i] = -1;
 	this->nacceptor = last->getNumberOfAcceptors();
@@ -286,6 +291,7 @@ unsigned ProposerStateMachine::connectAcceptors(const char (*acceptors)[IP_LENGT
 enum PaxosResult ProposerStateMachine::newProposal(Proposal* newproposal){
 	delete this->proposal;
 	this->proposal = newproposal;
+STDCOUT("proposer: new proposal, " << this->nacceptor << " acceptors\n");
 	for(unsigned i = 0; i != this->nacceptor; i++){
 		if(accsfd[i] < 0)
 			continue;
@@ -339,6 +345,7 @@ enum PaxosResult ProposerStateMachine::handlePhase1Message(int replysfd, enum Pa
 	default:
 		return HANDLED;
 	}
+STDCOUT("proposer: phase1 " << this->phase1ack << ", " << this->phase1nack << "\n");
 	if(this->phase1ack * 2 <= this->nacceptor && this->nacceptor != 0)
 		return HANDLED;
 
@@ -348,6 +355,7 @@ enum PaxosResult ProposerStateMachine::handlePhase1Message(int replysfd, enum Pa
 		sendHeaderProposal(accsfd[i],
 		PHASE2REQUEST, this->getVotingVersion(), this->getName(), this->proposal);
 	}
+STDCOUT("proposer: phase2 0, 0\n");
 	this->state = PHASE2;
 	this->timestamp = getSecond();
 	return HANDLED;
@@ -373,6 +381,7 @@ enum PaxosResult ProposerStateMachine::handlePhase2Message(int replysfd, enum Pa
 	default:
 		return HANDLED;
 	}
+STDCOUT("proposer: phase2 " << this->phase2ack << ", " << this->phase2nack << "\n");
 	if(this->isReadyToCommit() == false)
 		return HANDLED;
 
@@ -389,6 +398,8 @@ Proposal *ProposerStateMachine::getCommittingProposal(){
 		return this->proposal;
 	if(this->state == PHASE3)
 		return this->lastcommit;
+STDCOUT("proposer: getCommittingProposal error\n");
+STDCOUTFLUSH();
 	return NULL;
 }
 
@@ -421,6 +432,7 @@ enum PaxosResult ProposerStateMachine::handlePhase3Message(Proposal *p){
 		delete p;
 		return HANDLED;
 	}
+STDCOUT("proposer: other proposer committed\n");
 	this->commit(p);
 	return COMMITTING_OTHER;
 }

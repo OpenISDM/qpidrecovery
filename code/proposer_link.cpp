@@ -15,16 +15,25 @@ const char *oip, unsigned oport){
 	strcpy(ac.name, rp.name);
 	ac.count = rp.length;
 	ac.livingcount = 0;
+
+	struct ReplyAddress ra;
+	strcpy(ra.name, rp.name);
+STDCOUT("proposers:");
 	for(unsigned i = 0; i != ac.count; i++){
 		strcpy(ac.proposers[i], rp.ip[i]);
+STDCOUT(" " << ac.proposers[i]);
 		ac.sfd[i] = tcpconnect(ac.proposers[i], QUERY_BACKUP_PORT);
 		if(ac.sfd[i] >= 0){
+			write(ac.sfd[i], &ra, sizeof(struct ReplyAddress));
 			this->fs->registerFD(ac.sfd[i]);
 			ac.livingcount++;
 		}
-		else
+		else{
 			ac.sfd[i] = -1;
+STDCOUT("(error)");
+		}
 	}
+STDCOUT("\n");
 	strcpy(ac.oldip, oip);
 	ac.oldport = oport;
 	strcpy(ac.srcip, sip);
@@ -33,6 +42,7 @@ const char *oip, unsigned oport){
 	if(ac.livingcount == 0)
 		return -1;
 	this->listening.push_back(ac);
+STDCOUT("listen: living count=" << ac.livingcount << "\n");
 	return 0;
 }
 
@@ -41,6 +51,7 @@ static void closeAll(struct AddressChange &ac, FileSelector &fs){
 		if(ac.sfd[i] >= 0){
 			fs.unregisterFD(ac.sfd[i]);
 			close(ac.sfd[i]);
+			ac.sfd[i] = -1;
 		}
 	}
 }
@@ -51,7 +62,6 @@ char *oip, unsigned &oport,
 char *newip, unsigned &newport){
 	std::vector<struct AddressChange>::iterator i;
 	unsigned j;
-
 	for(i = this->listening.begin(); i != this->listening.end(); i++){
 		for(j = 0; j != (*i).count; j++){
 			if((*i).sfd[j] == ready)
@@ -61,13 +71,13 @@ char *newip, unsigned &newport){
 			break;
 	}
 	if(i == this->listening.end()){
-STDCOUT("addresschange: no matched fd\n");
 		return 0;
 	}
-
-	const int rasize = sizeof(ReplyAddress);
+STDCOUT("addresschange: fd matched\n");
+	const int rasize = sizeof(struct ReplyAddress);
 	struct ReplyAddress ra;
 	if(read(ready, &ra, rasize) != rasize){
+STDCOUT("addresschange: error\n");
 		this->fs->unregisterFD(ready);
 		close(ready);
 		(*i).sfd[j] = -1;
@@ -79,7 +89,7 @@ STDCOUT("addresschange: no matched fd\n");
 	}
 
 	if(strcmp((*i).name, ra.name) != 0){
-		std::cerr << "addresschange error: name not match\n";
+		std::cerr << "addresschange error: name not match " << (*i).name << ", " << ra.name << "\n";
 		return -1;
 	}
 	if(strcmp((*i).oldip, ra.ip) == 0 && (*i).oldport == ra.port){
@@ -93,7 +103,8 @@ STDCOUT("addresschange: no change\n");
 	oport = (*i).oldport;
 	strcpy(sip, (*i).srcip);
 	sport = (*i).srcport;
-
+STDCOUT("addresschange: " << sip << ":" << sport << "->" <<
+newip << ":" << newport << "(" << oip << ":" << oport << ")\n");
 	closeAll(*i, *(this->fs));
 	// this->listening.erase(i);
 	return 1;

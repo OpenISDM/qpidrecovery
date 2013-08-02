@@ -5,7 +5,9 @@
 #include"discovery.h"
 #include"fileselector.h"
 #include"paxos.h"
+#include"timestamp.h"
 #include<cstring>
+#include<cstdio>
 
 typedef vector<HeartbeatClient*> HBCVector;
 
@@ -80,8 +82,8 @@ static int checkExpired(HBCVector &v){
 
 static void deleteHBC(int i, HBCVector &v, FileSelector &fs){
 	HeartbeatClient *hbc = v[i];
-	v.erase(v.begin() + i);
 	fs.unregisterFD(v[i]->getFD());
+	v.erase(v.begin() + i);
 	delete hbc;
 }
 
@@ -116,9 +118,10 @@ const unsigned currentversion, const unsigned nacc, const char (*acc)[IP_LENGTH]
 	}
 }
 
+// return 0 if committed
 static int handleCommit(const enum PaxosResult r, ProposerStateMachine *(&psm), unsigned &currentversion,
 HBCVector &acceptors, HBCVector &proposers,
-const char *servicename, unsigned brokerport, FileSelector &fs){
+const char *servicename, unsigned brokerport, FileSelector &fs, bool &ischangingacceptor){
 	if(r != COMMITTING_SELF && r != COMMITTING_OTHER)
 		return -1;
 
@@ -130,6 +133,7 @@ const char *servicename, unsigned brokerport, FileSelector &fs){
 	currentversion = p->getVersion();
 
 	if(ptype == ACCEPTORCHANGEPROPOSAL){
+STDCOUT("committing: acceptorchange\n");
 		AcceptorChangeProposal *ap = (AcceptorChangeProposal*)p;
 		if(r != COMMITTING_SELF){
 			cerr << "error: acceptor changed by others\n";
@@ -145,6 +149,9 @@ const char *servicename, unsigned brokerport, FileSelector &fs){
 		ap->getNumberOfAcceptors(), ap->getAcceptors()));
 		delete psm; // also delete p;
 		psm = newpsm;
+		ischangingacceptor = false;
+STDCOUT("committed: acceptorchange\n");
+logTime("acceptorChangeCommitted");
 	}
 	if(ptype == RECOVERYPROPOSAL){
 		cerr << "error: recovery proposal\n";
@@ -155,7 +162,8 @@ const char *servicename, unsigned brokerport, FileSelector &fs){
 
 // return -1 if socket error, 0 if ok
 static int handlePaxosMessage(int ready, ProposerStateMachine *(&psm), unsigned &currentversion,
-HBCVector &acceptors, HBCVector &proposers, const char *servicename, unsigned brokerport, FileSelector &fs){
+HBCVector &acceptors, HBCVector &proposers, const char *servicename, unsigned brokerport,
+FileSelector &fs, bool &ischangingacceptor){
 	PaxosMessage m;
 	if(m.receive(ready) < 0)
 		return -1;
@@ -168,7 +176,7 @@ HBCVector &acceptors, HBCVector &proposers, const char *servicename, unsigned br
 	if(r == HANDLED)
 		return 0;
 	if(handleCommit(r, psm, currentversion, acceptors, proposers,
-	servicename, brokerport, fs) == -1)
+	servicename, brokerport, fs, ischangingacceptor) == -1)
 		cerr << "error: handle commit\n";
 	return 0;
 }
@@ -176,23 +184,37 @@ HBCVector &acceptors, HBCVector &proposers, const char *servicename, unsigned br
 int main(int argc,char *argv[]){
 	replaceSIGPIPE();
 
-	const unsigned expected_proposers = 1;//MAX_PROPOSERS;
-	const unsigned expected_acceptors = 1;//MAX_ACCEPTORS;
+	unsigned expected_proposers = (isCentralizedMode()? 1: 5);//MAX_PROPOSERS;
+	unsigned expected_acceptors = (isCentralizedMode()? 0: 5*2-1);//MAX_ACCEPTORS;
+	bool needchangeacceptor = (expected_acceptors == 0 ? false: true);
+	bool ischangingacceptor = false;
 	HBCVector proposers, acceptors;
 	const char *servicename = argv[1];
-	const unsigned brokerport = 5672;
+	unsigned brokerport;
+	sscanf(argv[2], "%u", &brokerport);
+	brokerport += 5672 - 1;
+STDCOUT("requestor:" << brokerport << "\n");
 	int querysfd;
 	vector<int> replysfd;
 	FileSelector fs(0, 0);
+
+	if(argc < 2){
+		cerr << "need service name\n";
+		return -1;
+	}
+	setLogName(servicename);
+	if(isActiveInExperiment(servicename) == false){
+		cout << servicename << " not active\n";
+		expected_proposers = 0;
+		expected_acceptors = 0;
+		needchangeacceptor = false;
+	}
 
 	if(expected_acceptors > MAX_ACCEPTORS || expected_proposers > MAX_PROPOSERS){
 		cerr << "assert: expected too large\n";
 		return -1;
 	}
-	if(argc < 2){
-		cerr << "need service name\n";
-		return -1;
-	}
+STDCOUT("requestor: " << servicename << "\n");
 
 	querysfd = tcpserversocket(QUERY_PROPOSER_PORT);
 	fs.registerFD(querysfd);
@@ -201,27 +223,36 @@ int main(int argc,char *argv[]){
 	ProposerStateMachine *psm = new ProposerStateMachine(fs, servicename, currentversion + 1,
 	new AcceptorChangeProposal(currentversion, 0, NULL)); // version = 0, acceptor set = empty
 	while(1){
-DELAY();
-STDCOUT(".");
-STDCOUTFLUSH();
-		if(acceptors.size() < expected_acceptors){
-STDCOUT("add acceptors\n");
+printDot();
+		if(ischangingacceptor == false && needchangeacceptor == true
+		/*acceptors.size() < expected_acceptors*/){
+			needchangeacceptor = false;
+			ischangingacceptor = true;
+STDCOUT("add acceptors");
 			char acc[MAX_ACCEPTORS][IP_LENGTH];
 			for(unsigned i = 0; i != acceptors.size(); i++)
 				acceptors[i]->getIP(acc[i]);
-			for(unsigned i = acceptors.size(); i != expected_acceptors; i++)
-				strcpy(acc[i], discoverAcceptor());
-
+			for(unsigned i = acceptors.size(); i != expected_acceptors; i++){
+				const char *accip = discoverAcceptor(servicename);
+				strcpy(acc[i], accip);
+STDCOUT(" " << accip);
+			}
+STDCOUT("\n");
+STDCOUTFLUSH();
+logTime("acceptorChangeProposal");
 			PaxosResult r = psm->newProposal(
 			new AcceptorChangeProposal(currentversion + 1, expected_acceptors, acc));
 
 			handleCommit(r, psm, currentversion, acceptors, proposers,
-			servicename, brokerport, fs);
+			servicename, brokerport, fs, ischangingacceptor);
 			continue;
 		}
 		if(proposers.size() < expected_proposers){// request
-STDCOUT("add proposers\n");
-			const char *newip = discoverProposer();
+
+			const char *newip = discoverProposer(servicename);
+STDCOUT("add proposers ");
+STDCOUT(newip << "\n");
+STDCOUTFLUSH();
 			if(sendRequest(servicename, newip, REQUEST_PROPOSER_PORT, brokerport,
 			currentversion, acceptors) == -1){
 				cerr << "error: send proposer request\n";
@@ -231,6 +262,8 @@ STDCOUT("add proposers\n");
 			fs.registerFD(hbc->getFD());
 			proposers.push_back(hbc);
 			// inform new proposer
+STDCOUT("inform new proposers\n");
+STDCOUTFLUSH();
 			for(unsigned i = 0; i != replysfd.size(); i++){
 				if(replyProposerList(replysfd[i], servicename, proposers) < 0){
 					close(replysfd[i]);
@@ -238,6 +271,7 @@ STDCOUT("add proposers\n");
 					i--;
 				}
 			}
+logTime("requestProposer");
 			continue;
 		}
 
@@ -247,9 +281,11 @@ STDCOUT("add proposers\n");
 			fs.resetTimeout(HEARTBEAT_PERIOD,0);
 			int r;
 			while((r = checkExpired(proposers)) >= 0){
+STDCOUT("proposer heartbeat expired\n");
 				deleteHBC(r, proposers, fs);
 			}
 			while((r = checkExpired(acceptors)) >= 0){
+STDCOUT("acceptor heartbeat expired\n");
 				deleteHBC(r, acceptors, fs);
 			}
 			continue;
@@ -269,18 +305,23 @@ STDCOUT(ready << "(query)\n");
 		if(ready >= 0){// receive heartbeat or paxos
 			int r;
 			if((r = receiveHeartbeat(ready, proposers)) != HB_NOT_FOUND){
-				if(r >= 0)
+				if(r >= 0){
+STDCOUT("lose proposer heartbeat " << proposers[r]->getIP() << "\n");
 					deleteHBC(r , proposers, fs);
+				}
 				continue;
 			}
 			if((r = receiveHeartbeat(ready, acceptors)) != HB_NOT_FOUND){
-				if(r >= 0)
+				if(r >= 0){
+STDCOUT("lose acceptor heartbeat " << acceptors[r]->getIP() << "\n");
 					deleteHBC(r , acceptors, fs);
+					needchangeacceptor = true;
+				}
 				continue;
 			}
 STDCOUT(ready << "(paxos)\n");
 			if(handlePaxosMessage(ready, psm, currentversion, acceptors, proposers,
-			servicename, brokerport, fs) == -1){
+			servicename, brokerport, fs, ischangingacceptor) == -1){
 				fs.unregisterFD(ready);
 			}
 			continue;
@@ -290,3 +331,4 @@ STDCOUT(ready << "(paxos)\n");
 	}
 	return 0;
 }
+

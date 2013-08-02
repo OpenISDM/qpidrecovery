@@ -28,7 +28,7 @@ int main(int argc,char*argv[]){
 		return -1;
 	}
 	char *servicename = argv[1];
-	cout << argv[1] << endl;
+	cout << "heartbeat: " << argv[1] << endl;
 
 	replaceSIGPIPE();
 
@@ -57,7 +57,7 @@ int main(int argc,char*argv[]){
 		if(ready == sfd){
 			char from[128];
 			int newsfd = tcpaccept(sfd, from);
-			cout << "new client(" << newsfd << "): " << from << endl;
+			cout << "heartbeat: new client(" << newsfd << "): " << from << endl;
 			sfdvec.push_back(newsfd);
 			continue;
 		}

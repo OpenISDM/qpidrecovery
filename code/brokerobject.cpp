@@ -5,6 +5,11 @@
 #include <cstring>
 #include <ctime>
 
+#define STDCOUT(A)
+//#define STDCOUT(A) std::cout << A
+#define STDCOUTFLUSH()
+//#define STDCOUTFLUSH() std::cout.flush()
+
 void urlToIPPort(string url, char *ip, unsigned &port){
 	unsigned i;
 	for(i = 0; url[i]!=':'; i++)ip[i] = url[i];
@@ -93,23 +98,23 @@ void BrokerInfo::readArgs(Object& obj){
 void LinkInfo::readArgs(Object& obj){
 	host = obj.attrString("host");
 	port = obj.attrUint("port");
-	cout << "LinkInfo: "<< host << ":" << port << "\n";
-	cout.flush();
+	STDCOUT("LinkInfo: "<< host << ":" << port << "\n");
+	STDCOUTFLUSH();
 }
 
 void QueueInfo::readArgs(Object& obj){
 	name = obj.attrString("name");
 	deqcount = 0;
 	depth = 0;
-	cout << "QueueInfo: " << name << endl;
-	cout.flush();
+	STDCOUT("QueueInfo: " << name << endl);
+	STDCOUTFLUSH();
 }
 
 void ExchangeInfo::readArgs(Object& obj){
 	name = obj.attrString("name");
 	extype = obj.attrString("type");
- 	cout << "ExchangeInfo: " << name << " " << extype << "\n";
-	cout.flush();
+ 	STDCOUT("ExchangeInfo: " << name << " " << extype << "\n");
+	STDCOUTFLUSH();
 }
 
 void BindingInfo::readArgs(Object& obj){
@@ -128,10 +133,10 @@ void BridgeInfo::readArgs(Object& obj){
 	routingkey = obj.attrString("key");
 	isqueue = obj.attrBool("srcIsQueue");
 	isdynamic = obj.attrBool("dynamic");
-	cout << "BridgeInfo: " << linkid << " " << src << " " << dest << " " << routingkey
-	<< (isqueue? " q": "") << (isdynamic? " d\n": "\n");
-cout<< *(obj.getBroker()) << endl;
-	cout.flush();
+STDCOUT("BridgeInfo: " << linkid << " " << src << " " << dest << " " << routingkey <<
+(isqueue? " q": "") << (isdynamic? " d\n": "\n"));
+STDCOUT(*(obj.getBroker()) << endl);
+	STDCOUTFLUSH();
 }
 
 ObjectInfo::ObjectInfo(Object& obj, Broker*broker, enum ObjectType ty){
@@ -211,7 +216,7 @@ vector<ObjectInfo*>& exvec, vector<ObjectInfo*>& quvec){
 			break;
 		}
 	}
-	cout << "binding: " << bindingkey << " " << exname << " " << quname << "\n";
+	STDCOUT("binding: " << bindingkey << " " << exname << " " << quname << "\n");
 	return (ret==2?1:0);
 }
 
@@ -241,14 +246,14 @@ string ObjectInfo::getBrokerUrl(){
 Broker *ObjectInfo::getBrokerPtr(){
 	return brokerptr;
 }
-*/
+
 string BridgeInfo::getBridgeSrcUrl(){
 	return src;
 }
 string BridgeInfo::getBridgeDestUrl(){
 	return dest;
 }
-
+*/
 int BrokerInfo::copyTo(Object* destobj){
 	cerr << "error: Broker::copyTo()\n";
 	return -1;
@@ -473,7 +478,7 @@ bool islocal, int issync){
     if(this->type != OBJ_LINK)
         return -1;
     Object::AttributeMap args;
-    args.addString("src", src);//will src and dest be overwritten?
+    args.addString("src", src);// exchange name
     args.addString("dest", dest);
     args.addString("key", key);
     args.addBool("durable", durable);

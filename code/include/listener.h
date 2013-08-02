@@ -51,7 +51,8 @@ public:
 	unsigned srcport;
 	char dstip[32];
 	unsigned dstport;
-	LinkDownEvent(string srcurl, string dsturl);
+	bool isfromqmf;
+	LinkDownEvent(string srcurl, string dsturl, bool fromqmf);
 };
 
 class Listener: public ConsoleListener {
@@ -68,6 +69,7 @@ public:
 	void delAgent(const Agent& agent);
 	void objectProps(Broker& broker, Object& object);
 	void objectStats(Broker& broker, Object& object);
+	void sendLinkDownEvent(std::string srcurl, std::string dsturl, bool fromqmf = false);
 	void event(Event& event);
 };
 

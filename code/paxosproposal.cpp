@@ -36,39 +36,43 @@ int AcceptorChangeProposal::getValue(){
 	return -1;
 }
 
-// isEqual
-bool NoProposal::isEqual(Proposal &p){
+// compare
+int NoProposal::compare(Proposal &p){
 	if(this->getType() != p.getType())
-		return false;
-	return true;
+		return this->getValue() > p.getValue()? 1: -1;
+	return 0;
 }
 
-bool RecoveryProposal::isEqual(Proposal &p){
+#define UNEQUALRETURN(A,B) if((A)!=(B)){return (A)>(B)? 1: -1;}
+int RecoveryProposal::compare(Proposal &p){
 	if(this->getType() != p.getType())
-		return false;
+		return this->getValue() > p.getValue()? 1: -1;
+
+	int c;
 	RecoveryProposal *r = (RecoveryProposal*)&p;
-
-	if(this->score != r->score ||
-	strcmp(this->backupip, r->backupip) != 0 ||
-	strcmp(this->failip, r->failip) != 0 ||
-	this->backupport != r->backupport ||
-	this->failport != r->failport)
-		return false;
-	return true;
+	UNEQUALRETURN(this->score, r->score)
+	if((c = strcmp(this->backupip, r->backupip)) != 0)
+		return c;
+	if((c = strcmp(this->failip, r->failip)) != 0)
+		return c;
+	UNEQUALRETURN(this->backupport, r->backupport)
+	UNEQUALRETURN(this->failport, r->failport)
+	return 0;
 }
 
-bool AcceptorChangeProposal::isEqual(Proposal &p){
-	if(this->getType() == p.getType())
-		return false;
+int AcceptorChangeProposal::compare(Proposal &p){
+	if(this->getType() != p.getType())
+		return this->getValue() > p.getValue()? 1: -1;
 
 	AcceptorChangeProposal *a = (AcceptorChangeProposal*)&p;
-	if(this->nacceptor != a->nacceptor)
-		return false;
+	UNEQUALRETURN(this->nacceptor, a->nacceptor)
+
 	for(unsigned i = 0; i < this->nacceptor; i++){ // does order matter?
-		if(strcmp(this->acceptor[i], a->acceptor[i]) != 0) 
-			return false;
+		int c = strcmp(this->acceptor[i], a->acceptor[i]);
+		if(c != 0) 
+			return c;
 	}
-	return true;
+	return 0;
 }
 
 template<typename T>

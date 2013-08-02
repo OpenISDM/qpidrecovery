@@ -2,6 +2,7 @@
 #include"brokerobject.h"
 #include<unistd.h>
 #include<memory.h>
+#include"timestamp.h"
 
 using namespace std;
 
@@ -47,10 +48,11 @@ ObjectPropertyEvent::~ObjectPropertyEvent(){
 		delete this->objinfo;
 }
 
-LinkDownEvent::LinkDownEvent(string srcurl, string dsturl):
+LinkDownEvent::LinkDownEvent(string srcurl, string dsturl, bool fromqmf):
 ListenerEvent(LINKDOWN){
 	urlToIPPort(srcurl, this->srcip, this->srcport);
 	urlToIPPort(dsturl, this->dstip, this->dstport);
+	this->isfromqmf = fromqmf;
 }
 
 //class Listener
@@ -64,8 +66,9 @@ void Listener::brokerConnected(const Broker& broker){
 }
 
 void Listener::brokerDisconnected(const Broker& broker){
+	cout << "brokerDisconnected: " << broker << endl;
+	cout << "broker disconnection event at " << getSecond() << "\n";
 	ListenerEvent *le = new BrokerDisconnectionEvent(broker.getUrl());
-	cout << "brokerDisconnected: " << broker.getUrl() << endl;
 	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
 }
 
@@ -91,7 +94,7 @@ void Listener::delAgent(const Agent& agent){
 void Listener::objectProps(Broker& broker, Object& object){
 	//discover new objects here
 	//cout << "objectProps: broker=" << broker << " object=" << object << endl;
-	cout << getSecond() << endl;
+	//cout << getSecond() << endl;
 
 	enum ObjectType t = objectStringToType(object.getClassKey().getClassName());
 	ObjectInfo *oi = newObjectInfoByType(&object, &broker, t);
@@ -99,7 +102,9 @@ void Listener::objectProps(Broker& broker, Object& object){
 		return;
 
 	ListenerEvent *le = new ObjectPropertyEvent(t, oi);
-	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
+	//cout << "passing event: return " << 
+	ListenerEvent::sendPtr(this->eventfd, le);
+	// << endl;
 }
 
 void Listener::objectStats(Broker& broker, Object& object){
@@ -118,6 +123,15 @@ return;
 	writeEvent(le);
 */
 }
+
+void Listener::sendLinkDownEvent(string srcurl, string dsturl, bool fromqmf){
+	ListenerEvent *le = new LinkDownEvent(
+	srcurl,
+	dsturl,
+	fromqmf);
+	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
+}
+
 void Listener::event(Event& event){
 	//cout << event << endl;
 	//cout << getSecond() <<endl;
@@ -132,9 +146,12 @@ void Listener::event(Event& event){
 //		"  exchange: " << event.attrString("exName") << endl <<
 //		"  queue: " << event.attrString("qName") << endl;
 	}
-	ListenerEvent *le = new LinkDownEvent(
+	cout << "link down event: " << event << "\n";
+	cout << "link down event at " << getSecond() << "\n";
+	//only report local route error
+	this->sendLinkDownEvent(
 	event.getBroker()->getUrl(),
-	event.attrString("rhost"));
-	cout << "passing event: return " << ListenerEvent::sendPtr(this->eventfd, le) << endl;
+	event.attrString("rhost"),
+	true);
 }
 

@@ -3,7 +3,7 @@
 #include<iostream>
 #include"timestamp.h"
 #include"messagecopy.h"
-
+#include"discovery.h"
 
 using namespace std;
 
@@ -29,7 +29,9 @@ static bool isIgnoredName(string str){
 	const char *pattern[]={
 		"qmf.","qmfc-","qpid.","amq.",NULL
 	};
-	for(unsigned j=0; pattern[j] != NULL; j++){
+	if(str.size() == 0 || str.size() >= 20)
+		return true;
+	for(unsigned j = 0; pattern[j] != NULL; j++){
 		bool matchflag = true;
 		for(unsigned i=0; pattern[j][i] != '\0'; i++){
 			if(i == str.size()){
@@ -42,7 +44,7 @@ static bool isIgnoredName(string str){
 			}
 		}
 		if(matchflag == true){
-			cout << str << " is ignored\n";
+			// cout << str << " is ignored\n";
 			return true;
 		}
 	}
@@ -81,7 +83,8 @@ int RecoveryManager::addObjectInfo(ObjectInfo* objinfo, enum ObjectType objtype)
 	}
 	for(unsigned i = 0; i < vec->size(); i++){
 		if(*((*vec)[i]) == *objinfo){// compare id && brokerurl
-			delete ((*vec)[i]);
+			//delete ((*vec)[i]);
+			// improve: auto delete?
 			vec->erase(vec->begin() + i);
 			break;
 		}
@@ -92,21 +95,32 @@ int RecoveryManager::addObjectInfo(ObjectInfo* objinfo, enum ObjectType objtype)
 
 int RecoveryManager::addBroker(const char *ip, unsigned port){
 	BrokerAddress ba((string)ip, port);
+	Broker *broker;
+	int brokerindex;
+cout << "recoverymanager: prepare addBroker " << ip << ":" << port;
+	if((brokerindex = this->getBrokerIndexByAddress(ba)) < 0){
+		qpid::client::ConnectionSettings settings;
+		settings.host = ba.ip;
+		settings.port = ba.port;
+		broker = this->sm->addBroker(settings);
+		broker->waitForStable();
+		struct BrokerAddressPair bapair;
+		bapair.address = ba;
+		bapair.pointer = broker;
+		this->bavec.push_back(bapair);
+	}
+	else{
+		broker = bavec[brokerindex].pointer;
+		return 0;
+	}
 
-	if(this->getBrokerIndexByAddress(ba) >= 0)
-		return -1;
-
-	qpid::client::ConnectionSettings settings;
-	settings.host = ba.ip;
-	settings.port = ba.port;
-	Broker* broker;
-	broker = this->sm->addBroker(settings);
-	broker->waitForStable();
+cout << "recoverymanager: addBroker " << ip << ":" << port;
 	Object::Vector objvec;
 	for(int j = 0; j != NUMBER_OF_OBJ_TYPES; j++){
 		enum ObjectType t = (enum ObjectType)j;
 		objvec.clear();
 		this->sm->getObjects(objvec, objectTypeToString(t), broker);
+cout << " " << objvec.size();
 		for(unsigned i = 0; i != objvec.size(); i++){
 			ObjectInfo *objinfo;
 			objinfo = newObjectInfoByType(&(objvec[i]), broker, t);
@@ -114,12 +128,8 @@ int RecoveryManager::addBroker(const char *ip, unsigned port){
 				this->addObjectInfo(objinfo, t);
 		}
 	}
-	{
-		struct BrokerAddressPair bapair;
-		bapair.address = ba;
-		bapair.pointer = broker;
-		this->bavec.push_back(bapair);
-	}
+cout << "\n";
+	logTime("brokerAdded");
 	return 0;
 }
 
@@ -129,24 +139,26 @@ int RecoveryManager::deleteBroker(const char *ip, unsigned port){
 	int i = this->getBrokerIndexByAddress(ba);
 	if(i == -1)
 		return -1;
-	this->sm->delBroker(this->bavec[i].pointer);
+	//this->sm->delBroker(this->bavec[i].pointer);
 	this->bavec.erase(this->bavec.begin() + i);
 	return 0;
 }
 
-static int getIndexByObjectId(vector<ObjectInfo*> &objs, ObjectId &oid){
+static int getIndexByUrlObjectId(vector<ObjectInfo*> &objs, string url, ObjectId &oid){
 	for(unsigned i = 0; i != objs.size(); i++){
-		if(oid == objs[i]->getId())
+		if(oid == objs[i]->getId() && url.compare(objs[i]->getBrokerUrl()) == 0)
 			return (signed)i;
 	}
 	return -1;
 }
 
-void RecoveryManager::copyBridges(Object::Vector &linkobjlist,
-string oldsrc, string newsrc, bool changedst, string olddst, string newdst){
+static void copyBridges(vector<ObjectInfo*> &links, vector<ObjectInfo*> &bridges,
+Object::Vector &linkobjlist,
+string oldsrc, string newsrc,
+bool changedst = false, string olddst = "", string newdst = ""){
 	int copycount=0;
-	cout << this->bridges.size() << " bridges in total\n";
-	for(vector<ObjectInfo*>::iterator i = this->bridges.begin(); i != this->bridges.end(); i++){
+	cout << bridges.size() << " bridges in total\n";
+	for(vector<ObjectInfo*>::iterator i = bridges.begin(); i != bridges.end(); i++){
 		string src = (*i)->getBrokerUrl();
 		if(oldsrc.compare(src) != 0)
 			continue;
@@ -154,14 +166,12 @@ string oldsrc, string newsrc, bool changedst, string olddst, string newdst){
 		string dst;
 		{// find dst
 			ObjectId oldlinkid = ((BridgeInfo*)(*i))->getLinkId();
-			int j = getIndexByObjectId(this->links, oldlinkid);
-			if(j < 0)
-				continue;
-			if(src.compare(this->links[j]->getBrokerUrl()) != 0){
-				cerr << "link id & broker url not match\n";
+			int j = getIndexByUrlObjectId(links, src, oldlinkid);
+			if(j < 0){
+				cerr << "link id & broker url not found\n";
 				continue;
 			}
-			dst = ((LinkInfo*)(this->links[j]))->getLinkDestUrl();
+			dst = ((LinkInfo*)(links[j]))->getLinkDestUrl();
 		}
 		if(changedst == true && olddst.compare(dst) != 0)
 			continue;
@@ -180,10 +190,54 @@ string oldsrc, string newsrc, bool changedst, string olddst, string newdst){
 	cout << copycount << " bridges copied\n";
 }
 
-int RecoveryManager::copyObjects(const char *failip, unsigned failport,
-const char *backupip, unsigned backupport){
-	BrokerAddress oldba(failip, failport);
-	BrokerAddress newba(backupip, backupport);
+class CopyObjectsArgs{
+public:
+	vector<ObjectInfo*> exchanges, queues, bindings, brokers, links, bridges;
+	Listener *listener;
+	char failip[32];
+	unsigned failport;
+	char backupip[32];
+	unsigned backupport;
+
+private:
+	void cpVec(vector<ObjectInfo*> &from, vector<ObjectInfo*> &to){
+		to.clear();
+		for(unsigned i = 0; i != from.size(); i++){
+			to.push_back(from[i]);
+		}
+	}
+
+public:
+	CopyObjectsArgs(
+	vector<ObjectInfo*> &cpexchanges,
+	vector<ObjectInfo*> &cpqueues,
+	vector<ObjectInfo*> &cpbindings,
+	vector<ObjectInfo*> &cpbrokers,
+	vector<ObjectInfo*> &cplinks,
+	vector<ObjectInfo*> &cpbridges,
+	Listener *cplistener,
+ 	const char *cpfailip, unsigned cpfailport,
+	const char *cpbackupip, unsigned cpbackupport
+	){
+		cpVec(cpexchanges, exchanges);
+		cpVec(cpqueues, queues);
+		cpVec(cpbindings, bindings);
+		cpVec(cpbrokers, brokers);
+		cpVec(cplinks, links);
+		cpVec(cpbridges, bridges);
+		this->listener = cplistener;
+		strcpy(failip, cpfailip);
+		failport = cpfailport;
+		strcpy(backupip, cpbackupip);
+		backupport = cpbackupport;
+	}
+};
+
+static void *copyObjectThread(void *voidcoarg){
+	CopyObjectsArgs *coarg = (CopyObjectsArgs*)voidcoarg;
+
+	BrokerAddress oldba(coarg->failip, coarg->failport);
+	BrokerAddress newba(coarg->backupip, coarg->backupport);
 	string newurl = newba.getAddress(), oldurl = oldba.getAddress();
 	cout << "failure: " << oldurl << "\n";
 	cout << "replace: " << newurl << "\n";
@@ -192,7 +246,7 @@ const char *backupip, unsigned backupport){
 	int copycount;
 	Object::Vector backupbrokerobjlist;
 	Broker *backupbroker;
-	SessionManager backupsm;
+	SessionManager backupsm; // = *(this->sm);
 	{
 		qpid::client::ConnectionSettings settings;
 		settings.host = newba.ip;
@@ -203,13 +257,13 @@ const char *backupip, unsigned backupport){
 	}
 	if(backupbrokerobjlist.size() != 1){
 		cerr << "error: add backup broker\n";
-		return -1;
+		return NULL;
 	}
 	Object &backupbrokerobj = (backupbrokerobjlist[0]);
 
 	{
 		vector<ObjectInfo*> *vecs[4] =
-		{&(this->exchanges), &(this->queues), &(this->bindings), &(this->links)};
+		{&(coarg->exchanges), &(coarg->queues), &(coarg->bindings), &(coarg->links)};
 
 		for(unsigned i = 0; i < 4; i++){
 			vector<ObjectInfo*> &v = *(vecs[i]);
@@ -220,8 +274,18 @@ const char *backupip, unsigned backupport){
 					continue;
 				if(i == 2){// bindings
 					if(((BindingInfo*)(*j))->setBindingNames(
-					this->exchanges, this->queues) == 0)
+					coarg->exchanges, coarg->queues) == 0)
 						continue;
+				}
+				if(i == 3){
+					string linkdest=((LinkInfo*)(*j))->getLinkDestUrl();
+					char dstip[64];
+					unsigned dstport;
+					urlToIPPort(linkdest, dstip, dstport);
+					if(checkFailure(dstip) == true){
+						coarg->listener->sendLinkDownEvent(newurl, linkdest, false);
+						//continue;
+					}
 				}
 				(*j)->copyTo(&backupbrokerobj);
 				copycount++;
@@ -232,19 +296,41 @@ const char *backupip, unsigned backupport){
 
 	//assume backupsm has received link objects
 
+	cout.flush();
+
 	Object::Vector objlist;
 	backupsm.getObjects(objlist, "link", backupbroker);
-	this->copyBridges(objlist, oldurl, newurl, false);
+	copyBridges(coarg->links, coarg->bridges, objlist, oldurl, newurl);
 
-	//client messages
-	for(unsigned i = 0; i < objlist.size()/* && i < 1*/; i++){
-		MessageCopier msgcopy(newurl, linkObjectDest(objlist[i]));
-		for(vector<ObjectInfo*>::iterator j = this->queues.begin(); j != this->queues.end(); j++){
-			if(oldurl.compare((*j)->getBrokerUrl()) != 0)
-				continue;
-			msgcopy.copyQueueMessage(((QueueInfo*)(*j))->getName());
-		}
-	}
+	backupsm.delBroker(backupbroker);
+
+std::cout<< "recovery ends at " << getSecond() << "\n";
+std::cout.flush();
+logTime("finishRecovery");
+	delete coarg;//new in startRecovery
+
+	return NULL;
+}
+
+int RecoveryManager::copyObjects(const char *failip, unsigned failport,
+const char *backupip, unsigned backupport){
+	CopyObjectsArgs *coarg = new CopyObjectsArgs(
+		this->exchanges,
+		this->queues,
+		this->bindings,
+		this->brokers,
+		this->links,
+		this->bridges,
+		this->listener,
+		failip, failport,
+		backupip, backupport
+	);
+	
+	pthread_t threadid;
+	pthread_create(&threadid, NULL, copyObjectThread, coarg);
+	//pthread_detach(threadid);
+	void *threadreturn;
+	pthread_join(threadid, &threadreturn);
 	return 0;
 }
 
@@ -256,6 +342,8 @@ const char *oldip, unsigned oldport, const char *newip, unsigned newport){
 	// find link from src to old
 	vector<ObjectInfo*>::iterator linkiter;
 
+	this->addBroker(srcip, srcport); // src is alive
+	
 	for(linkiter = this->links.begin(); linkiter != this->links.end(); linkiter++){
 		string linksrc = ((LinkInfo*)(*linkiter))->getBrokerUrl();
 		string linkdst = ((LinkInfo*)(*linkiter))->getLinkDestUrl();
@@ -263,7 +351,7 @@ const char *oldip, unsigned oldport, const char *newip, unsigned newport){
 			break;
 	}
 	if(linkiter == this->links.end()){
-		cerr << "reroute error: old link not found\n";
+		cout << "reroute: old link not found\n";
 		return -1;
 	}
 	cout << "old LinkInfo found\n";
@@ -285,11 +373,11 @@ const char *oldip, unsigned oldport, const char *newip, unsigned newport){
 	}
 	cout << "New link created\n";
 
-	this->copyBridges(linkobjlist, srcurl, srcurl, true, oldurl, newurl);
+	copyBridges(this->links, this->bridges,
+	linkobjlist, srcurl, srcurl, true, oldurl, newurl);
 
 	return 0;
 }
-
 
 int RecoveryManager::getEventFD(){
 	return this->eventpipe[0];
@@ -300,10 +388,10 @@ ListenerEvent *RecoveryManager::handleEvent(){
 
 	switch(le->getType()){
 	case OBJECTPROPERTY:
-		{
+		/*{
 			ObjectPropertyEvent *ope = (ObjectPropertyEvent*)le;
 			this->addObjectInfo(ope->getObjectInfo(), ope->objtype);
-		}
+		}*/
 		break;
 	case BROKERDISCONNECTION:
 		break;

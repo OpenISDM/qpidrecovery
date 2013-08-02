@@ -44,16 +44,17 @@ public:
 
 	virtual int sendReceiveContent(int rw, int sfd) = 0;
 	// rw = 'r' or 'w'
-	virtual bool isEqual(Proposal &p) = 0;
+	virtual int compare(Proposal &p) = 0;
 	virtual int getValue() = 0;
 };
 
 class NoProposal: public Proposal{
+protected:
+	int getValue();
 public:
 	NoProposal();
 	int sendReceiveContent(int rw, int sfd);
-	int getValue();
-	bool isEqual(Proposal &p);
+	int compare(Proposal &p);
 };
 
 class RecoveryProposal: public Proposal{
@@ -64,12 +65,14 @@ private:
 	unsigned backupport;
 	unsigned score;
 
+protected:
+	int getValue();
+
 public:
 	RecoveryProposal(unsigned ver, const char *fip = "", unsigned fport = 0,
 	const char *bip = "", unsigned bport = 0, unsigned bscore = 0);
 	int sendReceiveContent(int rw, int sfd);
-	int getValue();
-	bool isEqual(Proposal &p);
+	int compare(Proposal &p);
 
 	const char*getBackupIP();
 	unsigned getBackupPort();
@@ -81,13 +84,13 @@ class AcceptorChangeProposal: public Proposal{
 private:
 	unsigned nacceptor;
 	char acceptor[MAX_ACCEPTORS][IP_LENGTH];
-
+protected:
+	int getValue();
 public:
 	AcceptorChangeProposal(unsigned ver,
 	unsigned nnewlist = 0, const char (*newlist)[IP_LENGTH] = NULL);
 	int sendReceiveContent(int rw, int sfd);
-	int getValue();
-	bool isEqual(Proposal &p);
+	int compare(Proposal &p);
 
 	const char (*getAcceptors())[IP_LENGTH];
 	unsigned getNumberOfAcceptors();

@@ -123,8 +123,8 @@ private:
 public:
 	BridgeInfo(Object& obj, Broker*broker);
 	ObjectId getLinkId();
-	string getBridgeSrcUrl();
-	string getBridgeDestUrl();
+	//string getBridgeSrcUrl();
+	//string getBridgeDestUrl();
 	int copyTo(Object* dest);
 };
 

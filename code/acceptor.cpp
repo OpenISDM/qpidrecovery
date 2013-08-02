@@ -2,6 +2,7 @@
 #include"socketlib.h"
 #include"fileselector.h"
 #include"paxos.h"
+#include"timestamp.h"
 #include<iostream>
 #include<vector>
 #include<cstring>
@@ -41,7 +42,7 @@ static int handlePaxosMessage(int ready, NVector &accname){
 	PaxosMessage m;
 	if(m.receive(ready) < 0)
 		return -1;
-
+STDCOUT("acceptor: paxos msg\n");
 	for(NVector::iterator i = accname.begin(); i != accname.end(); i++){
 		const PaxosResult r = (*i).acc->handleMessage(ready, m);
 		if(r == IGNORED)
@@ -55,6 +56,8 @@ static int handlePaxosMessage(int ready, NVector &accname){
 
 int main(int argc,char *argv[]){
 	replaceSIGPIPE();
+	if(argc >= 2)
+		setLogName(argv[1]);
 
 	int requestsfd, paxossfd;
 	FileSelector fs(0, 1000);
@@ -70,12 +73,11 @@ int main(int argc,char *argv[]){
 	fs.registerFD(requestsfd);
 	fs.registerFD(paxossfd);
 	while(1){
-DELAY();
-STDCOUT(".");
-STDCOUTFLUSH();
+printDot();
 		int ready = fs.getReadReadyFD();
+
 		if(ready == requestsfd){
-STDCOUT("requestfd " << ready << "\n");
+STDCOUT("acceptor: requestfd " << ready << "\n");
 			char from[IP_LENGTH];
 			struct ParticipateRequest r;
 			int newsfd;
@@ -88,24 +90,28 @@ STDCOUT("requestfd " << ready << "\n");
 			continue;
 		}
 		if(ready == paxossfd){
+STDCOUT("acceptor: new paxosfd\n");
 			int newpaxossfd = tcpaccept(paxossfd, NULL);
-STDCOUT("new paxosfd " << ready << " " << newpaxossfd << "\n");
 			fs.registerFD(newpaxossfd);
 			continue;
 		}
 		if(ready >= 0){
-STDCOUT("paxosfd " << ready << "\n");
 			if(handlePaxosMessage(ready, accname) == -1){
 				fs.unregisterFD(ready);
 				close(ready);
-STDCOUT("paxosfd " << ready << " closed\n");
 			}
 			continue;
 		}
 
 		if(ready == GET_READY_FD_TIMEOUT){
 STDCOUT("timeout\n");
-			fs.resetTimeout(1000, 0);
+			fs.resetTimeout(4, 0);
+
+			for(NVector::iterator i = accname.begin(); i != accname.end(); i++){
+				if((*i).acc->checkTimeout(4) == HANDLED){
+STDCOUT("acceptor: state machine timeout\n");
+				}
+			}
 			continue;
 		}
 		cerr << "getReadyFD error";
