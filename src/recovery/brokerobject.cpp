@@ -12,14 +12,14 @@
 
 void urlToIPPort(string url, char *ip, unsigned &port){
 	unsigned i;
-	for(i = 0; url[i]!=':'; i++)ip[i] = url[i];
+	for(i = 0; url[i] != ':'; i++)ip[i] = url[i];
 	ip[i] = '\0';
-	port=0;
+	port = 0;
 	for(i++; i < url.length(); i++)
 		port = port * 10 + (url[i] - '0');
 }
 
-string IPPortToUrl(const char*ip, unsigned port){
+string IPPortToUrl(const char *ip, unsigned port){
 	char s[64];
 	sprintf(s, "%s:%u", ip, port);
 	string r = s;
@@ -32,11 +32,11 @@ static string utos(unsigned u){
 	return (string)s;
 }
 
-string linkObjectDest(Object& o){
-	return o.attrString("host")+":"+utos(o.attrUint("port"));
+string linkObjectDest(Object &o){
+	return o.attrString("host") + ":" + utos(o.attrUint("port"));
 }
 
-struct ObjectTypeString{
+static struct{
 	enum ObjectType t;
 	const char *s;
 }typestring[NUMBER_OF_OBJ_TYPES]={
@@ -50,8 +50,8 @@ struct ObjectTypeString{
 
 string objectTypeToString(enum ObjectType ty){
 	int a;
-	for(a=0; a<NUMBER_OF_OBJ_TYPES; a++){
-		if(typestring[a].t==ty)
+	for(a = 0; a < NUMBER_OF_OBJ_TYPES; a++){
+		if(typestring[a].t == ty)
 			return typestring[a].s;
 	}
 	return "";
@@ -59,14 +59,14 @@ string objectTypeToString(enum ObjectType ty){
 
 enum ObjectType objectStringToType(string st){
 	int a;
-	for(a=0; a<NUMBER_OF_OBJ_TYPES; a++){
-		if(st.compare((string)(typestring[a].s))==0)
+	for(a = 0; a < NUMBER_OF_OBJ_TYPES; a++){
+		if(st.compare((string)(typestring[a].s)) == 0)
 			return typestring[a].t;
 	}
 	return OBJ_UNKNOWN;
 }
 
-ObjectInfo*newObjectInfoByType(Object *object, Broker*broker, enum ObjectType t){
+ObjectInfo *newObjectInfoByType(Object *object, Broker *broker, enum ObjectType t){
 	switch(t){
 	case OBJ_BROKER:
 		return new BrokerInfo(*object, broker);
@@ -87,97 +87,145 @@ ObjectInfo*newObjectInfoByType(Object *object, Broker*broker, enum ObjectType t)
 
 //class ObjectInfo and its subclasses
 
-bool ObjectInfo::operator==(ObjectInfo& oi){
+bool ObjectInfo::operator==(ObjectInfo &oi){
 	return this->getId() == oi.getId() &&
 	this->getBrokerUrl().compare(oi.getBrokerUrl()) == 0;
 }
 
-void BrokerInfo::readArgs(Object& obj){
+ObjectInfo::ObjectInfo(Object &obj, Broker *broker, enum ObjectType ty){
+	this->type = ty;
+	this->objectid = obj.getObjectId();
+	this->brokerurl = obj.getBroker()->getUrl();
+	//brokerptr = broker;
 }
 
-void LinkInfo::readArgs(Object& obj){
-	host = obj.attrString("host");
-	port = obj.attrUint("port");
-	STDCOUT("LinkInfo: "<< host << ":" << port << "\n");
+ObjectInfo::ObjectInfo(ObjectInfo *copysrc){
+	this->type = copysrc->type;
+	this->objectid = copysrc->objectid;
+	this->brokerurl = copysrc->brokerurl;
+	//this->brokerptr = copysrc->brokerptr;
+}
+
+ObjectInfo::~ObjectInfo(){	
+}
+
+BrokerInfo::BrokerInfo(Object &obj, Broker *broker):
+ObjectInfo(obj, broker, OBJ_BROKER){
+}
+
+BrokerInfo::BrokerInfo(BrokerInfo *copysrc):
+ObjectInfo(copysrc){
+}
+
+ObjectInfo *BrokerInfo::duplicate(){
+	return new BrokerInfo(this);
+}
+
+LinkInfo::LinkInfo(Object &obj, Broker *broker):
+ObjectInfo(obj, broker, OBJ_LINK){
+	this->host = obj.attrString("host");
+	this->port = obj.attrUint("port");
+	STDCOUT("LinkInfo: " << host << ":" << port << "\n");
 	STDCOUTFLUSH();
 }
 
-void QueueInfo::readArgs(Object& obj){
-	name = obj.attrString("name");
-	deqcount = 0;
-	depth = 0;
-	STDCOUT("QueueInfo: " << name << endl);
-	STDCOUTFLUSH();
+LinkInfo::LinkInfo(LinkInfo *copysrc):
+ObjectInfo(copysrc){
+	this->host = copysrc->host;
+	this->port = copysrc->port;
 }
 
-void ExchangeInfo::readArgs(Object& obj){
-	name = obj.attrString("name");
-	extype = obj.attrString("type");
+ObjectInfo *LinkInfo::duplicate(){
+	return new LinkInfo(this);
+}
+
+ExchangeInfo::ExchangeInfo(Object &obj, Broker *broker):
+ObjectInfo(obj, broker, OBJ_EXCHANGE){
+	this->name = obj.attrString("name");
+	this->extype = obj.attrString("type");
  	STDCOUT("ExchangeInfo: " << name << " " << extype << "\n");
 	STDCOUTFLUSH();
 }
 
-void BindingInfo::readArgs(Object& obj){
-	bindingkey = obj.attrString("bindingKey");
-	exid = obj.attrRef("exchangeRef");
-	quid = obj.attrRef("queueRef");
-	exname = "";
-	quname = "";
-	//search exname and quname when recovering
+ExchangeInfo::ExchangeInfo(ExchangeInfo *copysrc):
+ObjectInfo(copysrc){
+	this->name = copysrc->name;
+	this->extype = copysrc->extype;
 }
 
-void BridgeInfo::readArgs(Object& obj){
-	linkid = obj.attrRef("linkRef");
-	src = obj.attrString("src");
-	dest = obj.attrString("dest");
-	routingkey = obj.attrString("key");
-	isqueue = obj.attrBool("srcIsQueue");
-	isdynamic = obj.attrBool("dynamic");
-STDCOUT("BridgeInfo: " << linkid << " " << src << " " << dest << " " << routingkey <<
-(isqueue? " q": "") << (isdynamic? " d\n": "\n"));
-STDCOUT(*(obj.getBroker()) << endl);
+ObjectInfo *ExchangeInfo::duplicate(){
+	return new ExchangeInfo(this);
+}
+
+QueueInfo::QueueInfo(Object &obj, Broker *broker):
+ObjectInfo(obj, broker, OBJ_QUEUE){
+	this->name = obj.attrString("name");
+	this->deqcount = 0;
+	this->depth = 0;
+	STDCOUT("QueueInfo: " << name << endl);
 	STDCOUTFLUSH();
 }
 
-ObjectInfo::ObjectInfo(Object& obj, Broker*broker, enum ObjectType ty){
-	init(obj, broker, ty);
+QueueInfo::QueueInfo(QueueInfo *copysrc):
+ObjectInfo(copysrc){
+	this->name = copysrc->name;
+	this->deqcount = 0;
+	this->depth = 0;
 }
 
-void ObjectInfo::init(Object& obj, Broker*broker, enum ObjectType ty){
-	type = ty;
-	objectid = obj.getObjectId();
-	brokerurl = obj.getBroker()->getUrl();
-	brokerptr = broker;
+ObjectInfo *QueueInfo::duplicate(){
+	return new QueueInfo(this);
 }
 
-BrokerInfo::BrokerInfo(Object& obj, Broker*broker):
-ObjectInfo(obj, broker, OBJ_BROKER){
-	readArgs(obj);
-}
-
-LinkInfo::LinkInfo(Object& obj, Broker*broker):
-ObjectInfo(obj, broker, OBJ_LINK){
-	readArgs(obj);
-}
-
-ExchangeInfo::ExchangeInfo(Object& obj, Broker*broker):
-ObjectInfo(obj, broker, OBJ_EXCHANGE){
-	readArgs(obj);
-}
-
-QueueInfo::QueueInfo(Object& obj, Broker*broker):
-ObjectInfo(obj, broker, OBJ_QUEUE){
-	readArgs(obj);
-}
-
-BindingInfo::BindingInfo(Object& obj, Broker*broker):
+BindingInfo::BindingInfo(Object &obj, Broker *broker):
 ObjectInfo(obj, broker, OBJ_BINDING){
-	readArgs(obj);
+	this->bindingkey = obj.attrString("bindingKey");
+	this->exid = obj.attrRef("exchangeRef");
+	this->quid = obj.attrRef("queueRef");
+	this->exname = "";
+	this->quname = "";
+	//search exname and quname when recovering
 }
 
-BridgeInfo::BridgeInfo(Object& obj, Broker*broker):
+BindingInfo::BindingInfo(BindingInfo *copysrc):
+ObjectInfo(copysrc){
+	this->bindingkey = copysrc->bindingkey;
+	this->exid = copysrc->exid;
+	this->quid = copysrc->quid;
+	this->exname = copysrc->exname;
+	this->quname = copysrc->quname;
+}
+
+ObjectInfo *BindingInfo::duplicate(){
+	return new BindingInfo(this);
+}
+
+BridgeInfo::BridgeInfo(Object &obj, Broker*broker):
 ObjectInfo(obj, broker, OBJ_BRIDGE){
-	readArgs(obj);
+	this->linkid = obj.attrRef("linkRef");
+	this->src = obj.attrString("src");
+	this->dest = obj.attrString("dest");
+	this->routingkey = obj.attrString("key");
+	this->isqueue = obj.attrBool("srcIsQueue");
+	this->isdynamic = obj.attrBool("dynamic");
+	STDCOUT("BridgeInfo: " << linkid << " " << src << " " << dest << " " << routingkey <<
+	(isqueue? " q": "") << (isdynamic? " d\n": "\n"));
+	STDCOUT(*(obj.getBroker()) << endl);
+	STDCOUTFLUSH();
+}
+
+BridgeInfo::BridgeInfo(BridgeInfo *copysrc):
+ObjectInfo(copysrc){
+	this->linkid = copysrc->linkid;
+	this->src = copysrc->src;
+	this->dest = copysrc->dest;
+	this->routingkey = copysrc->routingkey;
+	this->isqueue = copysrc->isqueue;
+	this->isdynamic = copysrc->isdynamic;
+}
+
+ObjectInfo *BridgeInfo::duplicate(){
+	return new BridgeInfo(this);
 }
 
 string ExchangeInfo::getName(){
@@ -188,17 +236,17 @@ string QueueInfo::getName(){
 	return name;
 }
 
-void QueueInfo::setQueueStat(unsigned long long& count, unsigned& dep){
-	unsigned long long lastdeqcount = deqcount;
-	unsigned lastdepth = depth;
-	deqcount = count;
-	depth = dep;
+void QueueInfo::setQueueStat(unsigned long long &count, unsigned &dep){
+	unsigned long long lastdeqcount = this->deqcount;
+	unsigned lastdepth = this->depth;
+	this->deqcount = count;
+	this->depth = dep;
 	count = lastdeqcount;
 	dep = lastdepth;
 }
 
 int BindingInfo::setBindingNames(
-vector<ObjectInfo*>& exvec, vector<ObjectInfo*>& quvec){
+vector<ObjectInfo*> &exvec, vector<ObjectInfo*> &quvec){
 	int ret=0;
 	for(unsigned i = 0; i < exvec.size(); i++){
 		if(exvec[i]->getId() == exid &&
@@ -228,7 +276,7 @@ unsigned int LinkInfo::getLinkDestPort(){
 }
 
 string LinkInfo::getLinkDestUrl(){
-	return host+":"+utos(port);
+	return host + ":" + utos(port);
 }
 
 ObjectId BridgeInfo::getLinkId(){
@@ -246,159 +294,46 @@ string ObjectInfo::getBrokerUrl(){
 Broker *ObjectInfo::getBrokerPtr(){
 	return brokerptr;
 }
-
-string BridgeInfo::getBridgeSrcUrl(){
-	return src;
-}
-string BridgeInfo::getBridgeDestUrl(){
-	return dest;
-}
 */
-int BrokerInfo::copyTo(Object* destobj){
+int BrokerInfo::copyTo(Object *destobj){
 	cerr << "error: Broker::copyTo()\n";
 	return -1;
 }
 
-int LinkInfo::copyTo(Object* destobj){
+int LinkInfo::copyTo(Object *destobj){
 	return copyToNewDest(destobj, host, port);
 }
 
-int LinkInfo::copyToNewDest(Object* destobj, string newhost, unsigned newport){
+int LinkInfo::copyToNewDest(Object *destobj, string newhost, unsigned newport){
 	ObjectOperator destoper(destobj, OBJ_BROKER);
 	return destoper.addLink(newhost, newport);
 }
 
-int ExchangeInfo::copyTo(Object* destobj){
+int ExchangeInfo::copyTo(Object *destobj){
 	ObjectOperator destoper(destobj, OBJ_BROKER);
 	return destoper.addExchange(name, extype);
 }
 
-int QueueInfo::copyTo(Object* destobj){
+int QueueInfo::copyTo(Object *destobj){
 	ObjectOperator destoper(destobj, OBJ_BROKER);
 	return destoper.addQueue(name);
 }
 
-int BindingInfo::copyTo(Object* destobj){
+int BindingInfo::copyTo(Object *destobj){
 	ObjectOperator destoper(destobj, OBJ_BROKER);
 	return destoper.addBinding(bindingkey, exname, quname);
 }
 
-int BridgeInfo::copyTo(Object* destobj){
+int BridgeInfo::copyTo(Object *destobj){
 	ObjectOperator destoper(destobj, OBJ_LINK);
 	return destoper.addBridge(src, dest, routingkey, isqueue, isdynamic);
 }
 
-//class SystemInfo
-SystemInfo::SystemInfo(/*ObjectId oid, */const char* ipaddr){
-    // objectid = oid;
-    totaldeq = lasttotaldeq = 0;
-    totaldepth = 0;
-    deqrate = 0;
-    hoptable = NULL;
-    nhoptable = 0;
-    ttlvalue = large_ttl;
-    strcpy(ipaddress, ipaddr);
-}
-
-SystemInfo::~SystemInfo(){
-    if(hoptable != NULL)
-        delete[] hoptable;
-}
-/*
-ObjectId SystemInfo::getId(){
-    return objectid;
-}
-*/
-string SystemInfo::getAddress(){
-    return ipaddress;
-}
-
-int SystemInfo::getDefaultTTL(){
-    return ttlvalue;
-}
-
-void SystemInfo::addStatistics(unsigned long long countchange, long long depthchange){
-    totaldeq += countchange;
-    totaldepth += depthchange;
-}
-
-void SystemInfo::updateDequeueRate(double interval){
-    const double alpha = 0.5;
-    deqrate = (1 - alpha) * deqrate +
-               alpha * (totaldeq - lasttotaldeq) / interval;
-    lasttotaldeq = totaldeq;
-}
-
-double SystemInfo::getDequeueRate(){
-    if(totaldepth == 0)
-        return 1e50;
-    return deqrate;
-}
-
-void SystemInfo::initPingdData(vector<SystemInfo>& systemvec, vector<SystemInfo>& outsystemvec){
-    if(hoptable != NULL)
-        delete[] hoptable;
-    const int svsize = systemvec.size();
-    nhoptable = svsize + outsystemvec.size();
-    hoptable = new PingdData[nhoptable];
-
-    for(int i = 0; i < nhoptable; i++){
-        hoptable[i].destip = (i >= svsize? outsystemvec[i-svsize].getAddress(): systemvec[i].getAddress());
-        hoptable[i].ttl = large_ttl;
-        hoptable[i].lastreturn = 1;
-    }
-}
-
-void SystemInfo::initPingdData(SystemInfo& sysinfo){ // only for outside node
-    if(hoptable != NULL)
-        delete[] hoptable;
-    nhoptable = 1;
-    hoptable = new PingdData[nhoptable];
-
-    hoptable[0].destip = sysinfo.getAddress();
-    hoptable[0].ttl = large_ttl;
-    hoptable[0].lastreturn = 1;
-}
-
-int SystemInfo::getTTL(string destip, int& ttl){
-    const time_t expiretime = 2; // seconds
-
-    if(destip.compare("127.0.0.1") == 0 || destip.compare("") == 0){
-        ttl = this->ttlvalue;
-        return 0;
-    }
-
-    for(int i = 0; i < nhoptable; i++){
-        if(hoptable[i].destip.compare(destip) != 0)
-            continue;
-        ttl = hoptable[i].ttl;
-        return (time(NULL) - hoptable[i].lastreturn > expiretime);
-    }
-    return -1;
-}
-
-int SystemInfo::setTTL(string destip, int ttl, time_t returntime){
-
-    if(destip.compare("127.0.0.1") == 0 || destip.compare("") == 0){
-        this->ttlvalue = ttl;
-        return 0;
-    }
-
-    for(int i = 0; i < nhoptable; i++){
-        if(hoptable[i].destip.compare(destip) != 0)
-            continue;
-        hoptable[i].ttl = ttl;
-        hoptable[i].lastreturn = returntime;
-        return 0;
-    }
-    return -1;
-}
-
 //class ObjectOperator
-ObjectOperator::ObjectOperator(Object* o, enum ObjectType t){
+ObjectOperator::ObjectOperator(Object *o, enum ObjectType t){
     setObject(o, t);
 }
-void ObjectOperator::setObject(Object* o, enum ObjectType t){
+void ObjectOperator::setObject(Object *o, enum ObjectType t){
     object = o;
     type = t;
 }
@@ -492,4 +427,3 @@ bool islocal, int issync){
     object->invokeMethod("bridge", args, mr);
     return mr.code;
 }
-

@@ -36,6 +36,7 @@ private:
 
 public:
 	Proposal(enum ProposalType t, unsigned v);
+	virtual ~Proposal();
 	int sendProposal(int sfd);
 	static Proposal *receiveProposal(int sfd);
 	int sendType(int sfd);
@@ -126,7 +127,7 @@ protected:
 	double timestamp; // managed by subclass
 
 	PaxosStateMachine(const char *m, Proposal *p, unsigned v, enum PaxosState s, double t);
-	~PaxosStateMachine();
+	virtual ~PaxosStateMachine();
 
 	const char *getName();
 public:
@@ -138,7 +139,7 @@ public:
 	virtual enum PaxosResult handleMessage(int replysfd, PaxosMessage &m) = 0;
 };
 
-class AcceptorStateMachine:public PaxosStateMachine{
+class AcceptorStateMachine: public PaxosStateMachine{
 private:
 	Proposal*promise;
 
@@ -156,7 +157,7 @@ public:
 
 #include"fileselector.h"
 
-class ProposerStateMachine:public PaxosStateMachine{ // this->version = lastcommit->version
+class ProposerStateMachine: public PaxosStateMachine{ // this->version = lastcommit->version
 private:
 	Proposal *proposal;
 	unsigned phase1ack, phase1nack;

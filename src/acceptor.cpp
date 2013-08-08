@@ -73,7 +73,6 @@ int main(int argc,char *argv[]){
 	fs.registerFD(requestsfd);
 	fs.registerFD(paxossfd);
 	while(1){
-printDot();
 		int ready = fs.getReadReadyFD();
 
 		if(ready == requestsfd){

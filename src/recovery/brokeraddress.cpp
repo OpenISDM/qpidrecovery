@@ -9,7 +9,7 @@ BrokerAddress::BrokerAddress(){
 
 BrokerAddress::BrokerAddress(string ip, unsigned port){
 	strcpy(this->ip,ip.c_str());
-	this->port=port;
+	this->port = port;
 }
 
 static string unsignedToString(unsigned x){
@@ -19,16 +19,16 @@ static string unsignedToString(unsigned x){
 }
 
 string BrokerAddress::getAddress(){
-	return ((string)this->ip)+":"+unsignedToString(this->port);
+	return ((string)this->ip) + ":" + unsignedToString(this->port);
 }
 
 bool BrokerAddress::operator==(BrokerAddress ba){
-	return this->port==ba.port&&strcmp(this->ip,ba.ip)==0;
+	return this->port == ba.port && strcmp(this->ip,ba.ip) == 0;
 }
 
 BrokerAddress BrokerAddress::operator=(BrokerAddress ba){
 	strcpy(this->ip, ba.ip);
-	this->port=ba.port;
+	this->port = ba.port;
 	return *this;
 }
 

@@ -24,8 +24,8 @@ protected:
 public:
 	enum ListenerEventType getType();
 
-	static int sendPtr(int fd, ListenerEvent *le);
-	static ListenerEvent *receivePtr(int fd); // need to delete the ptr
+	static int sendEventPtr(int fd, ListenerEvent *le);
+	static ListenerEvent *receiveEventPtr(int fd); // need to delete the ptr
 };
 
 class BrokerDisconnectionEvent: public ListenerEvent{
@@ -61,16 +61,16 @@ private:
 public:
 	Listener(int pipewritefd);
 
-	void brokerConnected(const Broker& broker);
-	void brokerDisconnected(const Broker& broker);
-	void newPackage(const std::string& name);
-	void newClass(const ClassKey& classKey);
-	void newAgent(const Agent& agent);
-	void delAgent(const Agent& agent);
-	void objectProps(Broker& broker, Object& object);
-	void objectStats(Broker& broker, Object& object);
+	void brokerConnected(const Broker &broker);
+	void brokerDisconnected(const Broker &broker);
+	void newPackage(const std::string &name);
+	void newClass(const ClassKey &classKey);
+	void newAgent(const Agent &agent);
+	void delAgent(const Agent &agent);
+	void objectProps(Broker &broker, Object &object);
+	void objectStats(Broker &broker, Object &object);
 	void sendLinkDownEvent(std::string srcurl, std::string dsturl, bool fromqmf = false);
-	void event(Event& event);
+	void event(Event &event);
 };
 
 #endif

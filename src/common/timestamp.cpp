@@ -5,7 +5,6 @@
 
 double getSecond(){
 	struct timeval tv;
-	//const unsigned subsec = 1364241338;
 	if(gettimeofday(&tv, NULL)!=0)
 		std::cerr << "gettimeofday error\n";
 	//tv.tv_sec -= subsec;
@@ -22,18 +21,9 @@ void logTime(const char *str){
 	static FILE *logf = NULL;
 
 	if(logf == NULL){
-		logf = fopen("/home/estinet/exp_recovery.log", "a");
+		//logf = fopen("/home/estinet/exp_recovery.log", "a");
+		logf = fopen("/dev/null", "a");
 	}
 	fprintf(logf, "%.6lf %s %s\n", getSecond(), logname, str);
 	fflush(logf);
 }
-
-void printDot(){
-	static int count;
-	std::cout << ".";
-	count++;
-	if(count==39){
-		std::cout << "\n";
-	}
-}
-

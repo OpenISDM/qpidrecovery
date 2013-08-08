@@ -4,7 +4,6 @@
 #include"brokerobject.h"
 #include<pthread.h>
 
-
 typedef vector<ObjectInfo*> ObjectInfoPtrVec;
 
 struct BrokerAddressPair{
@@ -20,11 +19,9 @@ private:
 	SessionManager *sm;
 	vector<ObjectInfo*> exchanges, queues, bindings, brokers, links, bridges;
 	AddressPairVec bavec;
-	//BrokerAddressVec altbavec;
 	int eventpipe[2];
 
 	int getBrokerIndexByAddress(BrokerAddress& ba);
-	// int getBrokerIndexByUrl(string url);
 
 	// return 1 if ignored, 0 if added
 	int addObjectInfo(ObjectInfo* objinfo, enum ObjectType objtype);
@@ -46,10 +43,6 @@ public:
 
 	int copyObjects(const char *failip, unsigned failport,
 	const char *backupip, unsigned backupport);
-
-	int copyMessages(const char *srcip, unsigned srcport,
-	const char *newip, unsigned newport, 
-	const char *srcobjname, const char *newobjname);
 
 	int reroute(const char *srcip, unsigned srcport,
 	const char *oldip, unsigned oldport, const char *newip, unsigned newport);

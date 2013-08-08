@@ -8,6 +8,9 @@ Proposal::Proposal(enum ProposalType t, unsigned v){
 	this->newversion = v;
 }
 
+Proposal::~Proposal(){	
+}
+
 int Proposal::sendType(int sfd){
 	const int spt = sizeof(enum ProposalType);
 	int r = -1;
@@ -120,6 +123,8 @@ Proposal *Proposal::receiveProposal(int sfd){
 	case ACCEPTORCHANGEPROPOSAL:
 		p = new AcceptorChangeProposal(newversion);
 		break;
+	default:
+		return NULL;
 	}
 	if(p->sendReceiveContent('r', sfd) < 0){
 		delete p;

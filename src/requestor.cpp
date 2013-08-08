@@ -223,7 +223,7 @@ STDCOUT("requestor: " << servicename << "\n");
 	ProposerStateMachine *psm = new ProposerStateMachine(fs, servicename, currentversion + 1,
 	new AcceptorChangeProposal(currentversion, 0, NULL)); // version = 0, acceptor set = empty
 	while(1){
-printDot();
+
 		if(ischangingacceptor == false && needchangeacceptor == true
 		/*acceptors.size() < expected_acceptors*/){
 			needchangeacceptor = false;

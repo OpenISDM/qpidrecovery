@@ -10,14 +10,24 @@
 #include"recoverymanager.h"
 #include"proposer_link.h"
 #include"paxos.h"
-#include"memoryusage.h"
 #include"socketlib.h"
 #include"heartbeat_lib.h"
-#include"discovery.h"
+#include"namelist.h"
 
 #define RANDOMDELAY usleep((400 + rand()%300) * 1000)
 
 using namespace std;
+
+#ifdef CENTRALIZED_MODE
+const bool iscentralizedmode = true;
+#else
+const bool iscentralizedmode = false;
+#endif
+#ifdef CENTRALIZED_MODE
+const bool isdistributedmode =true;
+#else
+const bool isdistributedmode =false;
+#endif
 
 class Monitored{
 public:
@@ -187,7 +197,7 @@ STDCOUT("pmessage\n");
 	return 0;
 }
 
-static void startRecovery(Monitored &mon, FileSelector &fs, RecoveryManager &recovery, const char *localip){
+static void startRecovery(Monitored &mon, FileSelector &fs, RecoveryManager &recovery){
 
 STDCOUT("lose heartbeat: " << mon.ip << ":" << mon.port << " " << mon.name << " at " << getSecond() << "\n");
 	fs.unregisterFD((mon.hbc)->getFD());
@@ -198,7 +208,7 @@ STDCOUT("recovery proposal at " << getSecond() << "\n");
 logTime("recovery proposal");
 	unsigned backupport;
 	int score;
-	const char *backupip = discoverBackup(localip, mon.ip, backupport, score);
+	const char *backupip = getBackupBroker(mon.ip, backupport, score);
 	PaxosResult r = mon.psm->newProposal(
 	new RecoveryProposal(mon.psm->getVotingVersion(),
 	mon.ip, mon.port, backupip, backupport, score)
@@ -290,18 +300,36 @@ static int receiveHeartbeat(int sfd, MVector &v){
 
 int main(int argc, char *argv[]){
 	replaceSIGPIPE();
-	const char *localip = NULL;
-	if(argc >= 2){
-		setLogName(argv[1]);
-	}
-	if(argc >= 3){
-		localip = argv[2];
-		cout << localip << endl;
-	}
-	if(argc >= 4){
-		unsigned randomseed = (unsigned)(getSecond() * 7654321);
-		sscanf(argv[3], "%u", &randomseed);
-		srand(randomseed);
+
+	{ // read arguments
+		int argcount = 0;
+		const int maxarg = 2;
+		for(int i = 1; i < argc; i++){
+			if(argv[i][0] != '-'){// required
+				switch(argcount){
+					case 0:// monitored broker list
+						readMonitoredBrokerArgument(argc - i, argv + i);
+						break;
+					case 1:// backup list
+						readBackupBrokerArgument(argc - i, argv + i);
+						break;
+					default:
+						cerr << "too many arguments" << endl;
+						return 0;
+				}
+				argcount++;
+			}
+			else{// optional
+				//if(readarguments(argc, argv, optindex) == 0)
+				//	continue;
+				cerr << "unknown option" << endl;
+				return 0;
+			}
+		}
+		if(argcount < maxarg){
+			cerr << "too few arguments" << endl;
+			return 0;
+		}
 	}
 
 	int requestsfd, querysfd, recoveryfd;
@@ -310,11 +338,7 @@ int main(int argc, char *argv[]){
 	PVector dstproposers;
 	LinkDstListener dstlistener(fs);
 	RecoveryManager recovery;
-/*
-	if(isCentralizedMode() == false){
-		recovery.addBroker(localip, );
-	}
-*/
+
 	requestsfd = tcpserversocket(REQUEST_PROPOSER_PORT);
 	querysfd = tcpserversocket(QUERY_BACKUP_PORT);
 	recoveryfd = recovery.getEventFD();
@@ -322,9 +346,22 @@ int main(int argc, char *argv[]){
 	fs.registerFD(recoveryfd);
 	fs.registerFD(requestsfd);
 	fs.registerFD(querysfd);
+	
+
+	{
+		const char *brokerurl;
+		while((brokerurl = getSubnetBroker()) != NULL){
+			//TODO: create ParticipateRequest and remove these codes
+			char brokerip[IP_LENGTH];
+			unsigned brokerport;
+			urlToIPPort(brokerurl, brokerip, brokerport);
+			createProposer(brokerurl, 2/*next version*/, 1/*current version*/, 0/*# of acceptors*/, NULL/*acceptor list*/,
+			monitor, brokerip, brokerport, fs);
+			recovery.addBroker(brokerip, brokerport);
+		}
+	}
+	
 	while(1){
-//if(getSecond() > 399)logTime("pro 399");
-printDot();
 		int ready = fs.getReadReadyFD();
 
 		if(ready == requestsfd){
@@ -340,6 +377,7 @@ STDCOUT(ready << "(requestsfd)\n");
 				monitor, from, r.brokerport, fs);
 
 				recovery.addBroker(from, r.brokerport);
+				// TODO: addBroker -> NewLink event -> subscribe proposer list
 				// subscribe proposer list from newly added link destination
 				string fromurl = IPPortToUrl(from, r.brokerport);
 				for(int i = recovery.firstLinkInfo(fromurl);
@@ -347,7 +385,7 @@ STDCOUT(ready << "(requestsfd)\n");
 				i = recovery.nextLinkInfo(fromurl, i)){
 					char dstip[IP_LENGTH];
 					unsigned dstport;
-					urlToIPPort(recovery.getLinkDst(i), dstip,dstport);
+					urlToIPPort(recovery.getLinkDst(i), dstip, dstport);
 					listenProposerList(dstproposers, dstip, dstport, fs);
 				}
 			}
@@ -382,10 +420,10 @@ STDCOUT("brokerdisconnection at " << getSecond() << "\n");
 			}
 			if(le->getType() == LINKDOWN){
 				LinkDownEvent *lde = (LinkDownEvent*)le;
-				if(checkFailure(lde->dstip) == true &&
+				if(checkFailure(lde->dstip) == true /*&&
 				(lde->isfromqmf == false || // event during recovery
 				strcmp(lde->srcip, localip) == 0 || 
-				isCentralizedMode() == true)){
+				isCentralizedMode() == true)*/){
 
 logTime("prepareRerouting");
 STDCOUT("link down at " << getSecond() << " ");
@@ -409,7 +447,7 @@ STDCOUT(lde->srcip << ":" << lde->srcport << "->" << lde->dstip << ":" << lde->d
 				int r = receiveHeartbeat(ready, monitor);
 				if(r != HB_NOT_FOUND){
 					if(r >= 0){ // read ready fd error
-						startRecovery(monitor[r], fs, recovery, localip);
+						startRecovery(monitor[r], fs, recovery);
 					}
 					continue;
 				}
@@ -469,7 +507,7 @@ logTime("finishRerouting");
 STDCOUT("proposer: heartbeat timeout");
 				//decide the heartbeat timeout according to network delay
 				//disable the following line in experiment to prevent false alarm
-				//startRecovery(mon, fs, recovery, localip);
+				//startRecovery(mon, fs, recovery);
 			}
 			continue;
 		}

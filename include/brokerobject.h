@@ -28,34 +28,34 @@ enum ObjectType objectStringToType(string st);
 
 class ObjectInfo{
 private:
-	enum ObjectType type; // OBJ_UNKNOWN by default
+	enum ObjectType type;
 	ObjectId objectid;
 	string brokerurl;
-	Broker*brokerptr; // does the pointer change during operation?
+//	Broker*brokerptr;
 
-	virtual void readArgs(Object& obj)=0;
 public:
-	ObjectInfo(Object& obj, Broker*broker, enum ObjectType ty=OBJ_UNKNOWN);
-	void init(Object& obj, Broker*broker, enum ObjectType ty);
-	//void initPhase2(SessionManager&sm);
+	ObjectInfo(Object &obj, Broker *broker, enum ObjectType ty=OBJ_UNKNOWN);
+	ObjectInfo(ObjectInfo*copysrc);
+	virtual ~ObjectInfo();
 
-	//Broker *getBrokerPtr();
 	string getBrokerUrl();
 	//Broker* getBrokerPtr();
-	virtual int copyTo(Object* dest)=0;
+	virtual int copyTo(Object* dest) = 0;
+
 	ObjectId getId();
 
+	virtual ObjectInfo *duplicate() = 0; // this function contains an operator new
 	bool operator==(ObjectInfo& oi);
 };
 
 ObjectInfo *newObjectInfoByType(Object *object, Broker *broker, enum ObjectType t);
 
 class BrokerInfo: public ObjectInfo{
-private:
-	void readArgs(Object& obj);
 public:
 	BrokerInfo(Object& obj, Broker*broker);
+	BrokerInfo(BrokerInfo *copysrc);
 	int copyTo(Object* dest);
+	ObjectInfo *duplicate();
 };
 
 class LinkInfo: public ObjectInfo{
@@ -63,14 +63,15 @@ private:
 	string host;
 	unsigned port;
 
-	void readArgs(Object& obj);
 public:
-	LinkInfo(Object& obj,Broker*broker);
+	LinkInfo(Object& obj, Broker*broker);
+	LinkInfo(LinkInfo *copysrc);
 	string getLinkDestHost();
 	unsigned getLinkDestPort();
 	string getLinkDestUrl();
 	int copyToNewDest(Object* dest, string host, unsigned port);
 	int copyTo(Object* dest);
+	ObjectInfo *duplicate();
 };
 
 class ExchangeInfo: public ObjectInfo{
@@ -78,11 +79,12 @@ private:
 	string name, typestr;
 	string extype;
 
-	void readArgs(Object& obj);
 public:
 	ExchangeInfo(Object& obj, Broker*broker);
+	ExchangeInfo(ExchangeInfo *copysrc);
 	string getName();
 	int copyTo(Object* dest);
+	ObjectInfo *duplicate();
 };
 
 class QueueInfo: public ObjectInfo{
@@ -91,72 +93,42 @@ private:
 	unsigned long long deqcount;
 	unsigned depth;
 
-	void readArgs(Object& obj);
 public:
-	QueueInfo(Object& obj, Broker*broker);
+	QueueInfo(Object& obj, Broker *broker);
+	QueueInfo(QueueInfo *copysrc);
 	string getName();
 	void setQueueStat(unsigned long long& count, unsigned& dep);// return old value
 	int copyTo(Object* dest);
+	ObjectInfo *duplicate();
 };
 
 class BindingInfo: public ObjectInfo{
 private:
-	ObjectId exid, quid;//binding
-	string bindingkey, exname, quname;// binding
+	ObjectId exid, quid;
+	string bindingkey, exname, quname;
 
-	void readArgs(Object& obj);
 public:
 	BindingInfo(Object& obj, Broker*broker);
+	BindingInfo(BindingInfo *copysrc);
 
 	//return 1 if set, 0 if name does not exist
 	int setBindingNames(vector<ObjectInfo*>& exvec, vector<ObjectInfo*>& quvec);
 	int copyTo(Object* dest);
+	ObjectInfo *duplicate();
 };
 
 class BridgeInfo: public ObjectInfo{
 private:
-	ObjectId linkid;//bridge
-	string src, dest, routingkey;// bridge
-	bool isqueue, isdynamic;// bridge
+	ObjectId linkid;
+	string src, dest, routingkey;
+	bool isqueue, isdynamic;
 
-	void readArgs(Object& obj);
 public:
 	BridgeInfo(Object& obj, Broker*broker);
+	BridgeInfo(BridgeInfo *copysrc);
 	ObjectId getLinkId();
-	//string getBridgeSrcUrl();
-	//string getBridgeDestUrl();
 	int copyTo(Object* dest);
-};
-
-class SystemInfo{ // 1. should inherit ObjectInfo?  2. distinguish system in/outside subnet?
-private:
-    // ObjectId objectid;
-    unsigned long long lasttotaldeq, totaldeq; // measure throughput
-    long long totaldepth;
-    double deqrate;
-    struct PingdData{ // measure number of hops
-        string destip;
-        int ttl;
-        time_t lastreturn;
-        // time_t lastrequest;
-    }* hoptable;
-    int nhoptable;
-    int ttlvalue;
-    char ipaddress[32];
-    const static int large_ttl = 1024;
-public:
-    SystemInfo(/*ObjectId oid, */const char* ipaddr);
-    ~SystemInfo();
-    // ObjectId getId();
-    string getAddress();
-    int getDefaultTTL();
-    void addStatistics(unsigned long long countchange, long long depthchange);
-    void updateDequeueRate(double interval);
-    double getDequeueRate();
-    void initPingdData(vector<SystemInfo>& systemvec, vector<SystemInfo>& outsystemvec);
-    void initPingdData(SystemInfo& sysinfo);
-    int getTTL(string destip, int& ttl); // return 0 = not expired, 1 = expired, -1 = wrong ip
-    int setTTL(string destip, int ttl, time_t returntime);
+	ObjectInfo *duplicate();
 };
 
 class ObjectOperator{
@@ -188,4 +160,3 @@ public:
 
 //ifndef in the first line
 #endif
-
