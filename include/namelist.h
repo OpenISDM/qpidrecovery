@@ -1,5 +1,5 @@
-int readMonitoredBrokerArgument(int argc, char*argv[]);
-int readBackupBrokerArgument(int argc, char*argv[]);
+int readMonitoredBrokerArgument(int argc, const char*argv[]);
+int readBackupBrokerArgument(int argc, const char*argv[]);
 const char *getSubnetBroker();
 
 const char *getAcceptor(const char *servicename);

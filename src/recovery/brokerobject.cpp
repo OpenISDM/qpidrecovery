@@ -66,7 +66,8 @@ enum ObjectType objectStringToType(string st){
 	return OBJ_UNKNOWN;
 }
 
-ObjectInfo *newObjectInfoByType(Object *object, Broker *broker, enum ObjectType t){
+ObjectInfo *newObjectInfoByType(Object *object, enum ObjectType t){
+	Broker *broker = object->getBroker();
 	switch(t){
 	case OBJ_BROKER:
 		return new BrokerInfo(*object, broker);

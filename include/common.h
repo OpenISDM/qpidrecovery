@@ -36,10 +36,11 @@ struct EmptyMessage{
 	int value;
 };
 
-#define MAX_PROPOSERS (9)
+#define MAX_PROPOSERS (3)
 #define MAX_ACCEPTORS (MAX_PROPOSERS * 2 - 1)
 struct ParticipateRequest{
 	char name[SERVICE_NAME_LENGTH]; // name of the requestor
+	char brokerip[IP_LENGTH];
 	unsigned brokerport;
 	unsigned votingversion;
 	unsigned committedversion; // of AcceptorChangePropsal

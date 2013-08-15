@@ -1,11 +1,12 @@
+#include<iostream>
+#include<vector>
+#include<cstring>
+
 #include"common.h"
 #include"socketlib.h"
 #include"fileselector.h"
 #include"paxos.h"
 #include"timestamp.h"
-#include<iostream>
-#include<vector>
-#include<cstring>
 
 using namespace std;
 

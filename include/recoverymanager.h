@@ -1,8 +1,8 @@
 #include<vector>
+#include"pthread.h"
 #include"listener.h"
 #include"brokeraddress.h"
 #include"brokerobject.h"
-#include<pthread.h>
 
 typedef vector<ObjectInfo*> ObjectInfoPtrVec;
 
@@ -19,6 +19,7 @@ private:
 	SessionManager *sm;
 	vector<ObjectInfo*> exchanges, queues, bindings, brokers, links, bridges;
 	AddressPairVec bavec;
+	pthread_mutex_t bavecmutex;
 	int eventpipe[2];
 
 	int getBrokerIndexByAddress(BrokerAddress& ba);
@@ -26,11 +27,6 @@ private:
 	// return 1 if ignored, 0 if added
 	int addObjectInfo(ObjectInfo* objinfo, enum ObjectType objtype);
 
-/*
-	void copyBridges(Object::Vector &linkobjlist,
-	string oldsrc, string newsrc,
-	bool changedst = false, string olddst = "", string newdst = "");
-*/
 public:
 	RecoveryManager();
 	~RecoveryManager();
@@ -47,8 +43,7 @@ public:
 	int reroute(const char *srcip, unsigned srcport,
 	const char *oldip, unsigned oldport, const char *newip, unsigned newport);
 
-	string getLinkDst(int index);
-	int firstLinkInfo(string srcurl);
-	int nextLinkInfo(string srcurl, int index);
+	friend void *addBrokerThread(void *voidba);
+	// friend void *copyObjectsThread(void *voidcoarg);
 };
 

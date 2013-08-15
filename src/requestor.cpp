@@ -1,13 +1,14 @@
 #include<vector>
 #include<iostream>
+#include<cstring>
+#include<cstdio>
+
 #include"socketlib.h"
 #include"heartbeat_lib.h"
-#include"discovery.h"
+#include"namelist.h"
 #include"fileselector.h"
 #include"paxos.h"
 #include"timestamp.h"
-#include<cstring>
-#include<cstdio>
 
 typedef vector<HeartbeatClient*> HBCVector;
 
@@ -42,6 +43,7 @@ unsigned currentversion, HBCVector &acceptors){
 	r.votingversion = currentversion + 1;
 	r.committedversion = currentversion;
 	r.length = copyIPArray(r.acceptor, acceptors);
+	r.brokerip[0] = '\0'; // how to get local ip?
 	r.brokerport = brokerport;
 
 	int sfd = tcpconnect(ip, port);
@@ -184,8 +186,8 @@ FileSelector &fs, bool &ischangingacceptor){
 int main(int argc,char *argv[]){
 	replaceSIGPIPE();
 
-	unsigned expected_proposers = (isCentralizedMode()? 1: 5);//MAX_PROPOSERS;
-	unsigned expected_acceptors = (isCentralizedMode()? 0: 5*2-1);//MAX_ACCEPTORS;
+	unsigned expected_proposers = MAX_PROPOSERS;
+	unsigned expected_acceptors = MAX_ACCEPTORS;
 	bool needchangeacceptor = (expected_acceptors == 0 ? false: true);
 	bool ischangingacceptor = false;
 	HBCVector proposers, acceptors;
@@ -203,12 +205,6 @@ STDCOUT("requestor:" << brokerport << "\n");
 		return -1;
 	}
 	setLogName(servicename);
-	if(isActiveInExperiment(servicename) == false){
-		cout << servicename << " not active\n";
-		expected_proposers = 0;
-		expected_acceptors = 0;
-		needchangeacceptor = false;
-	}
 
 	if(expected_acceptors > MAX_ACCEPTORS || expected_proposers > MAX_PROPOSERS){
 		cerr << "assert: expected too large\n";
@@ -233,7 +229,7 @@ STDCOUT("add acceptors");
 			for(unsigned i = 0; i != acceptors.size(); i++)
 				acceptors[i]->getIP(acc[i]);
 			for(unsigned i = acceptors.size(); i != expected_acceptors; i++){
-				const char *accip = discoverAcceptor(servicename);
+				const char *accip = getAcceptor(servicename);
 				strcpy(acc[i], accip);
 STDCOUT(" " << accip);
 			}
@@ -249,7 +245,7 @@ logTime("acceptorChangeProposal");
 		}
 		if(proposers.size() < expected_proposers){// request
 
-			const char *newip = discoverProposer(servicename);
+			const char *newip = getProposer(servicename);
 STDCOUT("add proposers ");
 STDCOUT(newip << "\n");
 STDCOUTFLUSH();

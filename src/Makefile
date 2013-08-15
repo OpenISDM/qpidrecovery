@@ -10,13 +10,10 @@ INCLUDEDIR=../include
 CXX=g++
 CXXFLAGS=-Wall -O2 -I$(INCLUDEDIR)
 
-#TARGETS=requestor acceptor proposer landmark heartbeat_server messagecopy_server
-TARGETS=landmark heartbeat_server messagecopy_server
-EXTRA_TARGETS=extra/qpidconf extra/bgtraffic extra/heartbeat_tester
+TARGETS=requestor acceptor proposer landmark heartbeat_server messagecopy_server
+EXTRA_TARGETS=extra/qpidconf extra/bgtraffic extra/heartbeat_tester pingd
 
-all: $(TARGETS)
-
-extra: $(EXTRA_TARGETS)
+all: $(TARGETS) $(EXTRA_TARGETS)
 
 messagecopy_server: messagecopy_server.o messagecopy.o $(COMMONOBJS)
 	$(CXX) $^ $(QPIDLIBS) -o $@
@@ -45,11 +42,16 @@ extra/qpidconf: extra/qpidconf.o recovery/brokerobject.o
 extra/heartbeat_tester: extra/heartbeat_tester.o $(COMMONOBJS) $(HEARTBEATOBJS)
 	$(CXX) $^ -o $@
 
-clean:
-	rm *.o */*.o $(TARGETS) #$(EXTRA_TARGETS)
+pingd:
+	make -C extra/pingd_src
 
-#proposer.o: proposer.cpp
-#	$(CXX) $(CXXFLAGS) -c $^ -o $@ -DDISTRIBUTED_MODE
+clean:
+	rm *.o */*.o $(TARGETS)
+#$(EXTRA_TARGETS)
+	make -C extra/pingd_src clean
+
+proposer.o: proposer.cpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@ -DDISTRIBUTED_MODE
 
 landmark.o: proposer.cpp
 	$(CXX) $(CXXFLAGS) -c $^ -o $@ -DCENTRALIZED_MODE

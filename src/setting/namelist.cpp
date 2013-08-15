@@ -30,7 +30,7 @@ struct UrlString{
 
 std::vector<struct UrlString> monitoredbrokers, backupbrokers;
 
-static int readBrokerArgument(int argc, char *argv[], std::vector<struct UrlString> &brokers){
+static int readBrokerArgument(int argc, const char *argv[], std::vector<struct UrlString> &brokers){
 	struct UrlString u;
 	FILE *f = fopen(argv[0], "r");
 	if(f == NULL){
@@ -46,19 +46,20 @@ static int readBrokerArgument(int argc, char *argv[], std::vector<struct UrlStri
 	return 0;
 }
 
-int readBackupBrokerArgument(int argc, char *argv[]){ // TODO: add score
+int readBackupBrokerArgument(int argc, const char *argv[]){
 	return readBrokerArgument(argc, argv, backupbrokers);
 }
 
-int readMonitoredBrokerArgument(int argc, char *argv[]){
+int readMonitoredBrokerArgument(int argc, const char *argv[]){
 	return readBrokerArgument(argc, argv, monitoredbrokers);
 }
 
 const char *getSubnetBroker(){
 	static unsigned moniindex = 0;
 	// we do not allow add or delete after reading argument
-	if(moniindex >= monitoredbrokers.size()){
-		return monitoredbrokers[moniindex].str;
+	if(moniindex < monitoredbrokers.size()){
+		moniindex++;
+		return monitoredbrokers[moniindex - 1].str;
 	}
 	return NULL;
 }

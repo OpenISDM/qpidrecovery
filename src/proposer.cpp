@@ -16,18 +16,18 @@
 
 #define RANDOMDELAY usleep((400 + rand()%300) * 1000)
 
-using namespace std;
-
 #ifdef CENTRALIZED_MODE
 const bool iscentralizedmode = true;
 #else
 const bool iscentralizedmode = false;
 #endif
-#ifdef CENTRALIZED_MODE
+#ifdef DISTRIBUTED_MODE
 const bool isdistributedmode =true;
 #else
 const bool isdistributedmode =false;
 #endif
+
+using namespace std;
 
 class Monitored{
 public:
@@ -298,37 +298,44 @@ static int receiveHeartbeat(int sfd, MVector &v){
 	return HB_NOT_FOUND;
 }
 
+int readArgument(int argcount, int argc, const char *argv[]){
+	switch(argcount){
+	case 0:// monitored broker list
+		readMonitoredBrokerArgument(argc, argv);
+		break;
+	case 1:// backup list
+		readBackupBrokerArgument(argc, argv);
+		break;
+	default:
+		cerr << "too many arguments" << endl;
+		return -1;
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[]){
 	replaceSIGPIPE();
 
 	{ // read arguments
 		int argcount = 0;
-		const int maxarg = 2;
+		const int maxargc = 2;
+		const char *defaultargv[2] = {"brokerlist.txt", "brokerlist.txt"};
+
 		for(int i = 1; i < argc; i++){
 			if(argv[i][0] != '-'){// required
-				switch(argcount){
-					case 0:// monitored broker list
-						readMonitoredBrokerArgument(argc - i, argv + i);
-						break;
-					case 1:// backup list
-						readBackupBrokerArgument(argc - i, argv + i);
-						break;
-					default:
-						cerr << "too many arguments" << endl;
-						return 0;
+				if(readArgument(argcount, argc - i, (const char**)argv + i) != 0){
+					return 0;
 				}
 				argcount++;
 			}
 			else{// optional
-				//if(readarguments(argc, argv, optindex) == 0)
-				//	continue;
 				cerr << "unknown option" << endl;
 				return 0;
 			}
 		}
-		if(argcount < maxarg){
-			cerr << "too few arguments" << endl;
-			return 0;
+		while(argcount < maxargc){
+			readArgument(argcount, maxargc - argcount, defaultargv + argcount);
+			argcount++;
 		}
 	}
 
@@ -351,49 +358,45 @@ int main(int argc, char *argv[]){
 	{
 		const char *brokerurl;
 		while((brokerurl = getSubnetBroker()) != NULL){
-			//TODO: create ParticipateRequest and remove these codes
-			char brokerip[IP_LENGTH];
-			unsigned brokerport;
-			urlToIPPort(brokerurl, brokerip, brokerport);
-			createProposer(brokerurl, 2/*next version*/, 1/*current version*/, 0/*# of acceptors*/, NULL/*acceptor list*/,
-			monitor, brokerip, brokerport, fs);
-			recovery.addBroker(brokerip, brokerport);
+			struct ParticipateRequest r;
+			const unsigned rsize = sizeof(struct ParticipateRequest);
+			urlToIPPort(brokerurl, r.brokerip, r.brokerport);
+			strcpy(r.name, r.brokerip);
+			r.votingversion = 2;
+			r.committedversion = 1; // of AcceptorChangePropsal
+			r.length = 0;
+			int sfd = tcpconnect("127.0.0.1", REQUEST_PROPOSER_PORT);
+			if(sfd < 0){
+				cerr << "error: connect to localhost\n";
+			}
+			if(write(sfd, &r, rsize) != rsize){
+				cerr << "error: write ParticipateRequest to localhost";
+			}
+			close(sfd);
 		}
 	}
-	
+
 	while(1){
 		int ready = fs.getReadReadyFD();
-
 		if(ready == requestsfd){
-STDCOUT(ready << "(requestsfd)\n");
+
 			char from[IP_LENGTH];
 			struct ParticipateRequest r;
 			int newsfd;
 			newsfd = acceptRead<struct ParticipateRequest>(requestsfd, from, r);
 			if(newsfd >= 0){
+				const char *bip = (r.brokerip[0] != '\0'? r.brokerip: from);
 				close(newsfd);
 				createProposer(r.name, r.votingversion,
 				r.committedversion, r.length, r.acceptor,
-				monitor, from, r.brokerport, fs);
+				monitor, bip, r.brokerport, fs);
 
-				recovery.addBroker(from, r.brokerport);
-				// TODO: addBroker -> NewLink event -> subscribe proposer list
-				// subscribe proposer list from newly added link destination
-				string fromurl = IPPortToUrl(from, r.brokerport);
-				for(int i = recovery.firstLinkInfo(fromurl);
-				i >= 0;
-				i = recovery.nextLinkInfo(fromurl, i)){
-					char dstip[IP_LENGTH];
-					unsigned dstport;
-					urlToIPPort(recovery.getLinkDst(i), dstip, dstport);
-					listenProposerList(dstproposers, dstip, dstport, fs);
-				}
+				recovery.addBroker(bip, r.brokerport);
+				STDCOUT(ready << "(requestsfd) broker added\n");
 			}
 			continue;
 		}
 		if(ready == querysfd){
-STDCOUT(ready << " (querysfd)\n");
-STDCOUTFLUSH();
 			char from[IP_LENGTH];
 			struct ReplyAddress r;
 			int newsfd;
@@ -411,32 +414,50 @@ STDCOUT("query " << r.name << "\n");
 			continue;
 		}
 		if(ready == recoveryfd){
-STDCOUT(ready << "(recoverysfd)\n");
 			ListenerEvent *le = recovery.handleEvent();
-			if(le->getType() == BROKERDISCONNECTION){
+			switch(le->getType()){
+			case BROKERDISCONNECTION:
+				{
 STDCOUT("brokerdisconnection at " << getSecond() << "\n");
-				BrokerDisconnectionEvent *bde = (BrokerDisconnectionEvent*)le;
-				recovery.deleteBroker(bde->brokerip, bde->brokerport);
-			}
-			if(le->getType() == LINKDOWN){
-				LinkDownEvent *lde = (LinkDownEvent*)le;
-				if(checkFailure(lde->dstip) == true /*&&
-				(lde->isfromqmf == false || // event during recovery
-				strcmp(lde->srcip, localip) == 0 || 
-				isCentralizedMode() == true)*/){
-
+					BrokerDisconnectionEvent *bde = (BrokerDisconnectionEvent*)le;
+					recovery.deleteBroker(bde->brokerip, bde->brokerport);
+				}
+				break;
+			case LINKDOWN:
+				{
+					LinkDownEvent *lde = (LinkDownEvent*)le;
+					if(checkFailure(lde->dstip) == true /*&&
+					(lde->isfromqmf == false || // event during recovery
+					strcmp(lde->srcip, localip) == 0 */){
 logTime("prepareRerouting");
 STDCOUT("link down at " << getSecond() << " ");
-					struct ProposerList *p =
-					searchProposerListByIPPort(dstproposers, lde->dstip, lde->dstport);
-					if(p != NULL){
+						struct ProposerList *p =
+						searchProposerListByIPPort(dstproposers, lde->dstip, lde->dstport);
+						if(p != NULL){
 STDCOUT(lde->srcip << ":" << lde->srcport << "->" << lde->dstip << ":" << lde->dstport << "\n");
-						dstlistener.listenAddressChange(p->plist,
-						lde->srcip, lde->srcport, lde->dstip, lde->dstport);
+							dstlistener.listenAddressChange(p->plist,
+							lde->srcip, lde->srcport, lde->dstip, lde->dstport);
+						}
+						else{
+							cerr << "unknown link dest\n";
+						}
 					}
-					else
-						cerr << "unknown link dest\n";
 				}
+				break;
+			case OBJECTPROPERTY:
+				{
+					ObjectPropertyEvent *ope = (ObjectPropertyEvent*)le;
+					if(ope->objtype != OBJ_LINK)
+						break;
+					// addBroker -> objproperty event -> subscribe proposer list
+					LinkInfo *linkinfo = (LinkInfo*)(ope->objinfo);
+					char dstip[IP_LENGTH];
+					unsigned dstport;
+					urlToIPPort(linkinfo->getLinkDestUrl(), dstip, dstport);
+					listenProposerList(dstproposers, dstip, dstport, fs);
+STDCOUT("new link" << linkinfo->getLinkDestUrl() <<"\n");
+				}
+				break;
 			}
 			delete le;
 			continue;
@@ -493,9 +514,9 @@ logTime("finishRerouting");
 			fs.resetTimeout(4,0);
 			for(MVector::iterator i = monitor.begin(); i != monitor.end(); i++){
 				Monitored &mon = *i;
-//				if(mon.psm->checkTimeout(4) == HANDLED){ // proposer state machine
-//STDCOUT("proposer: state machine timeout\n");
-//				}
+				if(mon.psm->checkTimeout(4) == HANDLED){ // proposer state machine
+STDCOUT("proposer: state machine timeout\n");
+				}
 
 				if(totaltime == 0)
 					mon.informAll(); // check disconnection
@@ -504,7 +525,7 @@ logTime("finishRerouting");
 					continue;
 				if(mon.hbc->isExpired(HEARTBEAT_PERIOD * 2) == 0) // no heartbeat
 					continue;
-STDCOUT("proposer: heartbeat timeout");
+STDCOUT("proposer: heartbeat timeout\n");
 				//decide the heartbeat timeout according to network delay
 				//disable the following line in experiment to prevent false alarm
 				//startRecovery(mon, fs, recovery);

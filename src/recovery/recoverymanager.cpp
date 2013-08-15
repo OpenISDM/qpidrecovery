@@ -15,16 +15,6 @@ int RecoveryManager::getBrokerIndexByAddress(BrokerAddress &ba){
 	return -1;
 }
 
-/*
-int RecoveryManager::getBrokerIndexByUrl(string url){
-	for(unsigned i = 0; i < this->bavec.size(); i++){
-		if(url.compare(this->bavec[i].pointer->getUrl()) == 0)
-			return (int)i;
-	}
-	return -1;
-}
-*/
-
 static bool isIgnoredName(string str){
 	const char *pattern[]={
 		"qmf.","qmfc-","qpid.","amq.",NULL
@@ -92,53 +82,90 @@ int RecoveryManager::addObjectInfo(ObjectInfo* objinfo, enum ObjectType objtype)
 	return 0;
 }
 
-int RecoveryManager::addBroker(const char *ip, unsigned port){
-	BrokerAddress ba((string)ip, port);
-	Broker *broker;
-	int brokerindex;
-cout << "recoverymanager: prepare addBroker " << ip << ":" << port;
-	if((brokerindex = this->getBrokerIndexByAddress(ba)) < 0){
-		qpid::client::ConnectionSettings settings;
-		settings.host = ba.ip;
-		settings.port = ba.port;
-		broker = this->sm->addBroker(settings);
-		broker->waitForStable();
-		struct BrokerAddressPair bapair;
-		bapair.address = ba;
-		bapair.pointer = broker;
-		this->bavec.push_back(bapair);
+class AddBrokerArgument{
+public:
+	RecoveryManager *recovery;
+	BrokerAddress address;
+
+	AddBrokerArgument(RecoveryManager *rm, BrokerAddress &ba){
+		this->recovery = rm;
+		this->address = ba;
 	}
-	else{
-		broker = bavec[brokerindex].pointer;
-		return 0;
+};
+
+void *addBrokerThread(void *voidab){
+	AddBrokerArgument *abarg = (AddBrokerArgument*)voidab;
+
+	qpid::client::ConnectionSettings settings;
+	settings.host = abarg->address.ip;
+	settings.port = abarg->address.port;
+	Broker *broker = abarg->recovery->sm->addBroker(settings);
+	broker->waitForStable();
+	struct BrokerAddressPair bapair;
+	bapair.address = abarg->address;
+	bapair.pointer = broker;
+	{
+		pthread_mutex_lock(&(abarg->recovery->bavecmutex));
+		abarg->recovery->bavec.push_back(bapair);
+		pthread_mutex_unlock(&(abarg->recovery->bavecmutex));
 	}
 
-cout << "recoverymanager: addBroker " << ip << ":" << port << endl;
+cout << "recoverymanager: addBroker " << abarg->address.ip << ":" << abarg->address.port << endl;
 	Object::Vector objvec;
 	for(int j = 0; j != NUMBER_OF_OBJ_TYPES; j++){
 		enum ObjectType t = (enum ObjectType)j;
 		objvec.clear();
-		this->sm->getObjects(objvec, objectTypeToString(t), broker);
-		for(unsigned i = 0; i != objvec.size(); i++){
-			ObjectInfo *objinfo;
-			objinfo = newObjectInfoByType(&(objvec[i]), broker, t);
+		abarg->recovery->sm->getObjects(objvec, objectTypeToString(t), broker);
+		for(Object::Vector::iterator iter = objvec.begin(); iter != objvec.end(); iter++){
+			abarg->recovery->listener->objectProps(*broker, *iter);
+/*			ObjectInfo *objinfo;
+			objinfo = newObjectInfoByType(&(objvec[i]), t);
 			if(objinfo != NULL)
-				this->addObjectInfo(objinfo, t);
+				abarg->recovery->addObjectInfo(objinfo, t);*/
 		}
 	}
 	logTime("brokerAdded");
+
+	delete abarg;
+	return NULL;
+}
+
+int RecoveryManager::addBroker(const char *ip, unsigned port){
+	BrokerAddress ba((string)ip, port);
+	int brokerindex;
+cout << "recoverymanager: prepare addBroker " << ip << ":" << port;
+	{
+		pthread_mutex_lock(&(this->bavecmutex));
+		brokerindex = this->getBrokerIndexByAddress(ba);
+		pthread_mutex_unlock(&(this->bavecmutex));
+	}
+	if(brokerindex >= 0){
+		return 0;
+	}
+	AddBrokerArgument *abarg = new AddBrokerArgument(this, ba);
+	pthread_t threadid;
+	pthread_create(&threadid, NULL, addBrokerThread, abarg);
+	//pthread_detach(threadid);
+	void *threadreturn;
+	pthread_join(threadid, &threadreturn);
+
 	return 0;
 }
 
 int RecoveryManager::deleteBroker(const char *ip, unsigned port){
 	BrokerAddress ba((string)ip, port);
-
-	int i = this->getBrokerIndexByAddress(ba);
-	if(i == -1)
-		return -1;
+	//Broker *broker = NULL;
+	{
+		pthread_mutex_lock(&(this->bavecmutex));
+		int i = this->getBrokerIndexByAddress(ba);
+		if(i != -1){
+	//		broker = this->bavec[i].pointer;
+			this->bavec.erase(this->bavec.begin() + i);	
+		}
+		pthread_mutex_unlock(&(this->bavecmutex));
+	}
 	//TODO: this operation sometimes blocks
-	//this->sm->delBroker(this->bavec[i].pointer);
-	this->bavec.erase(this->bavec.begin() + i);
+	//this->sm->delBroker(broker);
 	return 0;
 }
 
@@ -252,7 +279,7 @@ public:
 	}
 };
 
-static void *copyObjectThread(void *voidcoarg){
+static void *copyObjectsThread(void *voidcoarg){
 	CopyObjectsArgs *coarg = (CopyObjectsArgs*)voidcoarg;
 
 	BrokerAddress oldba(coarg->failip, coarg->failport);
@@ -346,7 +373,7 @@ const char *backupip, unsigned backupport){
 	);
 
 	pthread_t threadid;
-	pthread_create(&threadid, NULL, copyObjectThread, coarg);
+	pthread_create(&threadid, NULL, copyObjectsThread, coarg);
 	//pthread_detach(threadid);
 	void *threadreturn;
 	pthread_join(threadid, &threadreturn);
@@ -378,10 +405,18 @@ const char *oldip, unsigned oldport, const char *newip, unsigned newport){
 	Object::Vector linkobjlist;
 	{// find broker object
 		BrokerAddress ba((string)srcip, srcport);
-		int i = this->getBrokerIndexByAddress(ba);
-		if(i == -1)
+		Broker* srcbroker = NULL;
+		{
+			pthread_mutex_lock(&(this->bavecmutex));
+			int i = this->getBrokerIndexByAddress(ba);
+			if(i != -1){
+				srcbroker = this->bavec[i].pointer;
+			}
+			pthread_mutex_unlock(&(this->bavecmutex));
+		}
+		if(srcbroker == NULL)
 			return -1;
-		Broker* srcbroker = this->bavec[i].pointer;
+
 		Object::Vector srcbrokerobjlist;
 		srcbrokerobjlist.clear();
 		this->sm->getObjects(srcbrokerobjlist, "broker", srcbroker);
@@ -407,10 +442,10 @@ ListenerEvent *RecoveryManager::handleEvent(){
 
 	switch(le->getType()){
 	case OBJECTPROPERTY:
-		/*{
+		{
 			ObjectPropertyEvent *ope = (ObjectPropertyEvent*)le;
-			this->addObjectInfo(ope->getObjectInfo(), ope->objtype);
-		}*/
+			this->addObjectInfo(ope->objinfo->duplicate(), ope->objtype);
+		}
 		break;
 	case BROKERDISCONNECTION:
 		break;
@@ -418,26 +453,6 @@ ListenerEvent *RecoveryManager::handleEvent(){
 		break;
 	}
 	return le;
-}
-
-//TODO: better design
-string RecoveryManager::getLinkDst(int index){
-	return ((LinkInfo*)(this->links[index]))->getLinkDestUrl();
-}
-
-int RecoveryManager::firstLinkInfo(string srcurl){
-	return nextLinkInfo(srcurl, -1);
-}
-
-int RecoveryManager::nextLinkInfo(string srcurl, int index){
-	index++;
-	while(((unsigned)index) < this->links.size()){
-		if(srcurl.compare(links[index]->getBrokerUrl()) == 0){
-			return index;
-		}
-		index++;
-	}
-	return -1;
 }
 
 RecoveryManager::RecoveryManager(){
@@ -451,11 +466,14 @@ RecoveryManager::RecoveryManager(){
 	links.clear();
 	bridges.clear();
 	bavec.clear();
+	pthread_mutex_init(&(this->bavecmutex), NULL);
 }
 
 RecoveryManager::~RecoveryManager(){
+	pthread_mutex_destroy(&(this->bavecmutex));
 	delete sm;
 	delete listener;
 	close(eventpipe[0]);
 	close(eventpipe[1]);
+	
 }

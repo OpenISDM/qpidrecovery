@@ -36,13 +36,11 @@ public:
 };
 
 class ObjectPropertyEvent: public ListenerEvent{
-private:
-	ObjectInfo *objinfo;
 public:
-	ObjectPropertyEvent(enum ObjectType t, ObjectInfo *i);
+	ObjectPropertyEvent(Object &obj);
 	~ObjectPropertyEvent();
 	enum ObjectType objtype;
-	ObjectInfo *getObjectInfo();
+	ObjectInfo *objinfo;
 };
 
 class LinkDownEvent: public ListenerEvent{

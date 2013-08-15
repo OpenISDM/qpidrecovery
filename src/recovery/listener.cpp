@@ -34,22 +34,14 @@ ListenerEvent(BROKERDISCONNECTION){
 	urlToIPPort(url, this->brokerip, this->brokerport);
 }
 
-ObjectPropertyEvent::ObjectPropertyEvent(enum ObjectType t, ObjectInfo *i):
+ObjectPropertyEvent::ObjectPropertyEvent(Object &obj):
 ListenerEvent(OBJECTPROPERTY){
-	this->objtype = t;
-	this->objinfo = i;
-}
-
-ObjectInfo *ObjectPropertyEvent::getObjectInfo(){
-	ObjectInfo *r = this->objinfo;
-	this->objinfo = NULL;
-	return r;
+	this->objtype = objectStringToType(obj.getClassKey().getClassName());
+	this->objinfo = newObjectInfoByType(&obj, this->objtype);
 }
 
 ObjectPropertyEvent::~ObjectPropertyEvent(){
-	if(this->objinfo != NULL){
-		delete this->objinfo;
-	}
+	delete this->objinfo;
 }
 
 LinkDownEvent::LinkDownEvent(string srcurl, string dsturl, bool fromqmf):
@@ -95,14 +87,12 @@ void Listener::delAgent(const Agent& agent){
 
 void Listener::objectProps(Broker& broker, Object& object){
 	STDCOUT1("objectProps: broker=" << broker << " object=" << object << endl);
-
-	enum ObjectType t = objectStringToType(object.getClassKey().getClassName());
-	ObjectInfo *oi = newObjectInfoByType(&object, &broker, t);
-	if(oi == NULL)
-		return;
-
 	STDCOUT2("object property event at " << getSecond() << endl);
-	ListenerEvent *le = new ObjectPropertyEvent(t, oi);
+	ListenerEvent *le = new ObjectPropertyEvent(object);
+	if(((ObjectPropertyEvent*)le)->objinfo == NULL){
+		delete le;
+		return;
+	}
 	int ret = ListenerEvent::sendEventPtr(this->eventfd, le);
 	STDCOUT2("send event: return " << ret << endl);
 }

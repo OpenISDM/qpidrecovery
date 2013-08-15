@@ -5,7 +5,6 @@
 #include"socketlib.h"
 #include"common.h"
 #include"timestamp.h"
-#include"discovery.h"
 
 #define TRAFFIC_SIZE ((128*1024*8)/10)
 #define MESSAGE_SIZE (8100)
@@ -30,16 +29,18 @@ void getInterarrivalTime(unsigned &sec,unsigned &usec){
 	usec = (unsigned int)(1000000 * (i - sec));
 }
 
-int main(int argc,char*argv[]){
+int main(int argc,char *argv[]){
 
 	if(argc < 3){
 		fprintf(stderr, "need random seed\n");
 		return -1;
 	}
+
 	fprintf(stderr, "start bgtraffic %s %s\n", argv[1], argv[2]);
 	for(int i = 0; i < MESSAGE_SIZE; i++)
 		msg[i] = 'A' + i % 26;
 
+	const char *sendtoip = argv[1];
 	unsigned randomseed;
 	randomseed = sscanf(argv[2], "%u", &randomseed);
 	srand(randomseed);
@@ -61,8 +62,6 @@ int main(int argc,char*argv[]){
 		if(readyfd == GET_READY_FD_TIMEOUT){
 			getInterarrivalTime(sec, usec);
 			fs.resetTimeout(sec, usec);
-			char sendtoip[IP_LENGTH];
-			sprintf(sendtoip, "1.0.%d.1", (rand() % NBROKER) + 1);
 			udpsendto(sfd, sendtoip, BGTRAFFIC_PORT, msg, MESSAGE_SIZE);
 			continue;
 		}

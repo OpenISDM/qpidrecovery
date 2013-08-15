@@ -48,7 +48,7 @@ public:
 	bool operator==(ObjectInfo& oi);
 };
 
-ObjectInfo *newObjectInfoByType(Object *object, Broker *broker, enum ObjectType t);
+ObjectInfo *newObjectInfoByType(Object *object, enum ObjectType t);
 
 class BrokerInfo: public ObjectInfo{
 public:
