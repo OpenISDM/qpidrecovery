@@ -43,7 +43,7 @@ unsigned currentversion, HBCVector &acceptors){
 	r.votingversion = currentversion + 1;
 	r.committedversion = currentversion;
 	r.length = copyIPArray(r.acceptor, acceptors);
-	r.brokerip[0] = '\0'; // how to get local ip?
+		r.brokerip[0] = '\0'; // how to get local ip?
 	r.brokerport = brokerport;
 
 	int sfd = tcpconnect(ip, port);
@@ -183,43 +183,135 @@ FileSelector &fs, bool &ischangingacceptor){
 	return 0;
 }
 
+static int readArguments(int readcount, int argc, const char *argv[],
+const char**servicename, unsigned *brokerport, 
+unsigned *expected_proposers, unsigned *expected_acceptors){
+	switch(readcount){
+	case 0:
+		if(strlen(argv[0]) >= SERVICE_NAME_LENGTH){
+			cerr << "cannot read argument: service name\n";
+			return -1;
+		}
+		(*servicename) = argv[0];
+		break;
+	case 1:
+		if(sscanf(argv[0], "%u", brokerport) != 1){
+			cerr << "cannot read argument: broker port\n";
+			return -1;
+		}
+		break;
+	case 2:
+		if(sscanf(argv[0], "%u", expected_proposers) != 1){
+			cerr << "cannot read argument: number of proposers\n";
+			return -1;
+		}
+		break;
+	case 3:
+		if(sscanf(argv[0], "%u", expected_acceptors) != 1){
+			cerr << "cannot read argument: number of acceptors\n";
+			return -1;
+		}
+		break;
+	case 4:
+		if(readProposerArgument(argc, (const char**)argv) != 0){
+			cerr <<"cannot read argument: proposer list\n";
+			return -1;
+		}
+		break;
+	case 5:
+		if(readAcceptorArgument(argc, (const char**)argv) != 0){
+			cerr <<"cannot read argument: acceptor list\\n";
+			return -1;
+		}
+		break;
+	default:
+		cerr << "too many arguments\n";
+		return -1;
+	}
+	return 0;
+}
+
 int main(int argc,char *argv[]){
 	replaceSIGPIPE();
 
-	unsigned expected_proposers = MAX_PROPOSERS;
-	unsigned expected_acceptors = MAX_ACCEPTORS;
+	unsigned expected_proposers = 0;//MAX_PROPOSERS;
+	unsigned expected_acceptors = 0;//MAX_ACCEPTORS;
+	const char *landmarkip = NULL;
+	const char *servicename; // in distributed mode
+	unsigned brokerport;
+	{// read arguments
+		const int defaultargc = 6;
+		const char *defaultargv[6] = {"", "5672", "0", "0", "paxoslist.txt", "paxoslist.txt"};
+		int readcount = 0;
+		for(int i = 1; i < argc; i++){
+			if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--landmark") == 0){
+				i++;
+				if(i >= argc){
+					cerr << "missing argument\n";
+					return 0;
+				}
+				landmarkip = argv[i];
+				continue;
+			}
+			if(readArguments(readcount, argc - i, (const char**)argv + i,
+			&servicename, &brokerport,
+			&expected_proposers, &expected_acceptors) != 0){
+				return 0;
+			}
+			readcount++;
+		}
+		while(readcount < defaultargc){
+			if(readArguments(readcount, defaultargc - readcount, defaultargv + readcount,
+			&servicename, &brokerport,
+			&expected_proposers, &expected_acceptors) != 0){
+				return 0;
+			}
+			readcount++;
+		}
+		if(servicename[0] == '\0' && landmarkip == NULL){
+			cerr << "need service name\n";
+			return 0;
+		}
+		if(landmarkip != NULL){
+			expected_proposers = expected_acceptors = 0;
+		}
+	}
+
 	bool needchangeacceptor = (expected_acceptors == 0 ? false: true);
 	bool ischangingacceptor = false;
 	HBCVector proposers, acceptors;
-	const char *servicename = argv[1];
-	unsigned brokerport;
-	sscanf(argv[2], "%u", &brokerport);
-	brokerport += 5672 - 1;
-STDCOUT("requestor:" << brokerport << "\n");
+	setLogName(servicename);
+STDCOUT("requestor: " << servicename << "\n");
+
 	int querysfd;
 	vector<int> replysfd;
 	FileSelector fs(0, 0);
-
-	if(argc < 2){
-		cerr << "need service name\n";
-		return -1;
-	}
-	setLogName(servicename);
 
 	if(expected_acceptors > MAX_ACCEPTORS || expected_proposers > MAX_PROPOSERS){
 		cerr << "assert: expected too large\n";
 		return -1;
 	}
-STDCOUT("requestor: " << servicename << "\n");
 
 	querysfd = tcpserversocket(QUERY_PROPOSER_PORT);
 	fs.registerFD(querysfd);
 
+	// add the landmark as a proposer
+	if(landmarkip != NULL){
+		HeartbeatClient *hbc = new HeartbeatClient(landmarkip);
+		if(hbc->getFD() < 0){
+			cerr << "cannot connect to landmark\n";
+			return 0;
+		}
+		fs.registerFD(hbc->getFD());
+		proposers.push_back(hbc);
+	}
+
+	// code for change acceptor
 	unsigned currentversion = 0; // the last committed version
 	ProposerStateMachine *psm = new ProposerStateMachine(fs, servicename, currentversion + 1,
 	new AcceptorChangeProposal(currentversion, 0, NULL)); // version = 0, acceptor set = empty
-	while(1){
 
+	while(1){
 		if(ischangingacceptor == false && needchangeacceptor == true
 		/*acceptors.size() < expected_acceptors*/){
 			needchangeacceptor = false;
@@ -229,7 +321,11 @@ STDCOUT("add acceptors");
 			for(unsigned i = 0; i != acceptors.size(); i++)
 				acceptors[i]->getIP(acc[i]);
 			for(unsigned i = acceptors.size(); i != expected_acceptors; i++){
-				const char *accip = getAcceptor(servicename);
+				const char *accip = getAcceptorIP();
+				if(accip == NULL){
+					cerr << "error: insufficient acceptors\n";
+					return 0;
+				}
 				strcpy(acc[i], accip);
 STDCOUT(" " << accip);
 			}
@@ -245,7 +341,11 @@ logTime("acceptorChangeProposal");
 		}
 		if(proposers.size() < expected_proposers){// request
 
-			const char *newip = getProposer(servicename);
+			const char *newip = getProposerIP();
+			if(newip == NULL){
+				cerr << "error: insufficient proposers\n";
+				return 0;
+			}
 STDCOUT("add proposers ");
 STDCOUT(newip << "\n");
 STDCOUTFLUSH();
@@ -255,7 +355,9 @@ STDCOUTFLUSH();
 				continue;
 			}
 			HeartbeatClient *hbc = new HeartbeatClient(newip);
-			fs.registerFD(hbc->getFD());
+			if(hbc->getFD() >= 0){
+				fs.registerFD(hbc->getFD());
+			}
 			proposers.push_back(hbc);
 			// inform new proposer
 STDCOUT("inform new proposers\n");

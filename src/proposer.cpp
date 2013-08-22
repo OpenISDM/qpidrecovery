@@ -22,9 +22,9 @@ const bool iscentralizedmode = true;
 const bool iscentralizedmode = false;
 #endif
 #ifdef DISTRIBUTED_MODE
-const bool isdistributedmode =true;
+const bool isdistributedmode = true;
 #else
-const bool isdistributedmode =false;
+const bool isdistributedmode = false;
 #endif
 
 using namespace std;
@@ -116,7 +116,13 @@ MVector &monitor, const char *from, unsigned brokerport, FileSelector &fs){
 		}
 	}
 	HeartbeatClient *hbc = new HeartbeatClient(from);
-	fs.registerFD(hbc->getFD());
+	if(hbc->getFD() != -1){
+		fs.registerFD(hbc->getFD());
+	}
+	else{
+		// how to handle this?
+		cerr << "error: new HeartbeatClient\n";
+	}
 
 	Monitored mon(
 	new ProposerStateMachine(fs, name, votingver,
@@ -206,9 +212,11 @@ STDCOUT("lose heartbeat: " << mon.ip << ":" << mon.port << " " << mon.name << " 
 	recovery.deleteBroker(mon.ip, mon.port);
 STDCOUT("recovery proposal at " << getSecond() << "\n");
 logTime("recovery proposal");
+	char backupip[IP_LENGTH];
 	unsigned backupport;
 	int score;
-	const char *backupip = getBackupBroker(mon.ip, backupport, score);
+	const char *backupurl = getBackupBrokerURL(mon.ip, mon.port, score);
+	urlToIPPort((std::string)backupurl, backupip, backupport);
 	PaxosResult r = mon.psm->newProposal(
 	new RecoveryProposal(mon.psm->getVotingVersion(),
 	mon.ip, mon.port, backupip, backupport, score)
@@ -298,44 +306,22 @@ static int receiveHeartbeat(int sfd, MVector &v){
 	return HB_NOT_FOUND;
 }
 
-int readArgument(int argcount, int argc, const char *argv[]){
-	switch(argcount){
-	case 0:// monitored broker list
-		readMonitoredBrokerArgument(argc, argv);
-		break;
-	case 1:// backup list
-		readBackupBrokerArgument(argc, argv);
-		break;
-	default:
-		cerr << "too many arguments" << endl;
-		return -1;
-	}
-	return 0;
-}
-
 int main(int argc, char *argv[]){
 	replaceSIGPIPE();
 
 	{ // read arguments
-		int argcount = 0;
-		const int maxargc = 2;
-		const char *defaultargv[2] = {"brokerlist.txt", "brokerlist.txt"};
-
-		for(int i = 1; i < argc; i++){
-			if(argv[i][0] != '-'){// required
-				if(readArgument(argcount, argc - i, (const char**)argv + i) != 0){
-					return 0;
-				}
-				argcount++;
-			}
-			else{// optional
-				cerr << "unknown option" << endl;
-				return 0;
-			}
+		const int argc2 = (iscentralizedmode? 3: 1);
+		const char *argv2[3] = {"", "brokerlist.txt", "brokerlist.txt"};
+		if(argc > argc2){
+			cerr << "too many arguments" << endl;
+			return 0;
 		}
-		while(argcount < maxargc){
-			readArgument(argcount, maxargc - argcount, defaultargv + argcount);
-			argcount++;
+		for(int i = 0; i < argc; i++){
+			argv2[i] = argv[i];
+		}
+		if(iscentralizedmode){
+			readMonitoredBrokerArgument(argc - 1, (const char**)(argv2 + 1));
+			readBackupBrokerArgument(argc - 2, (const char**)(argv2 + 2));
 		}
 	}
 
@@ -357,7 +343,7 @@ int main(int argc, char *argv[]){
 
 	{
 		const char *brokerurl;
-		while((brokerurl = getSubnetBroker()) != NULL){
+		while((brokerurl = getSubnetBrokerURL()) != NULL){
 			struct ParticipateRequest r;
 			const unsigned rsize = sizeof(struct ParticipateRequest);
 			urlToIPPort(brokerurl, r.brokerip, r.brokerport);
@@ -483,19 +469,19 @@ STDCOUT("new link" << linkinfo->getLinkDestUrl() <<"\n");
 						continue;
 					if(checkFailure(srcip) == true)
 						continue;
-//logTime("startRerouting");
+logTime("startRerouting");
 STDCOUT("reroute start at " << getSecond() <<"\n");
 STDCOUTFLUSH();
 					recovery.reroute(srcip, srcport,
 					oldip, oldport,	newip, newport);
-
+					/*
 					if(sendCopyMessageRequest(srcip, srcport, newip, newport, "qu", "ex") != 0){
 						cerr << "error: sendCopyMessageRequest";
 					}
-					//object name is related to broker conf!
+					object name is related to broker conf!
+					*/
 STDCOUT("reroute end at " << getSecond() << "\n");
 logTime("finishRerouting");
-//logTime("finishRecovery");
 					continue;
 				}
 			}
@@ -528,7 +514,7 @@ STDCOUT("proposer: state machine timeout\n");
 STDCOUT("proposer: heartbeat timeout\n");
 				//decide the heartbeat timeout according to network delay
 				//disable the following line in experiment to prevent false alarm
-				//startRecovery(mon, fs, recovery);
+				startRecovery(mon, fs, recovery);
 			}
 			continue;
 		}

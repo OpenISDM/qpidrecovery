@@ -1,5 +1,5 @@
 #include"common.h"
-#define HEARTBEAT_PERIOD (1)
+#define HEARTBEAT_PERIOD (2.5)
 
 using namespace std;
 

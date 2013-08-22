@@ -8,7 +8,7 @@
 
 using namespace std;
 
-void sendHeartbeat(vector<int> &sfdvec, char *servicename){
+void sendHeartbeat(vector<int> &sfdvec, const char *servicename){
 	struct Heartbeat hb;
 	strcpy(hb.name, servicename);
 	for(int i = 0; i < (signed int)sfdvec.size(); i++){
@@ -22,13 +22,13 @@ void sendHeartbeat(vector<int> &sfdvec, char *servicename){
 	}
 }
 
-int main(int argc,char*argv[]){
-	if(argc < 2){
-		cerr << "need service name\n";
-		return -1;
-	}
-	char *servicename = argv[1];
-	cout << "heartbeat: " << argv[1] << endl;
+int main(int argc,char *argv[]){
+	const char *servicename;
+	if(argc < 2)
+		servicename = "abcdefg";
+	else
+		servicename = (const char*)argv[1];
+	cout << "heartbeat: " << servicename << endl;
 
 	replaceSIGPIPE();
 

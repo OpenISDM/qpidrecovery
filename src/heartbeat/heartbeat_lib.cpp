@@ -13,12 +13,15 @@ HeartbeatClient::HeartbeatClient(const char *ip){
 }
 
 HeartbeatClient::~HeartbeatClient(){
-	close(sfd);
+	if(sfd >= 0)
+		close(sfd);
 }
 
 int HeartbeatClient::readMessage(){
 	struct Heartbeat hb;
 	int r;
+	if(sfd < 0)
+		return -1;
 	r = read(sfd, &hb, sizeof(struct Heartbeat));
 	if(r == sizeof(struct Heartbeat)){
 		this->timestamp = getSecond();
@@ -42,16 +45,3 @@ void HeartbeatClient::getIP(char *s){
 	strcpy(s, this->ip);
 }
 
-
-// vector
-/*
-HeartbeatClient *searchByIP(const char *ip, HBCVector &v){
-	for(HBCVector::iterator i = v.begin(); i != v.end(); i++){
-		char *hbcip = NULL;
-		(*i)->getIP(hbcip);
-		if(strcmp(ip, hbcip) == 0)
-			return *i;
-	}
-	return NULL;
-}
-*/

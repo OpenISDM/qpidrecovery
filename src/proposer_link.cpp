@@ -17,6 +17,7 @@ const char *oip, unsigned oport){
 	ac.livingcount = 0;
 
 	struct ReplyAddress ra;
+	const int rasize = sizeof(struct ReplyAddress);
 	strcpy(ra.name, rp.name);
 STDCOUT("proposers:");
 	for(unsigned i = 0; i != ac.count; i++){
@@ -24,13 +25,15 @@ STDCOUT("proposers:");
 STDCOUT(" " << ac.proposers[i]);
 		ac.sfd[i] = tcpconnect(ac.proposers[i], QUERY_BACKUP_PORT);
 		if(ac.sfd[i] >= 0){
-			write(ac.sfd[i], &ra, sizeof(struct ReplyAddress));
+			if(write(ac.sfd[i], &ra, rasize) != rasize){
+STDCOUT("(write error)");
+			}
 			this->fs->registerFD(ac.sfd[i]);
 			ac.livingcount++;
 		}
 		else{
 			ac.sfd[i] = -1;
-STDCOUT("(error)");
+STDCOUT("(connect error)");
 		}
 	}
 STDCOUT("\n");

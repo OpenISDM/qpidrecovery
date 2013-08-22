@@ -1,8 +1,11 @@
 int readMonitoredBrokerArgument(int argc, const char*argv[]);
 int readBackupBrokerArgument(int argc, const char*argv[]);
-const char *getSubnetBroker();
+int readProposerArgument(int argc, const char*argv[]);
+int readAcceptorArgument(int argc, const char*argv[]);
 
-const char *getAcceptor(const char *servicename);
-const char *getProposer(const char *servicename);
-const char *getBackupBroker(const char*failip, unsigned &port, int &score);
 bool checkFailure(const char *checkip);
+
+const char *getBackupBrokerURL(const char*failip, unsigned failport, int &score);
+const char *getSubnetBrokerURL();
+const char *getAcceptorIP();
+const char *getProposerIP();
