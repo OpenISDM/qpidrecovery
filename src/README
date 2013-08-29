@@ -1,11 +1,8 @@
 	Qpid Recovery Program README.txt
 
-"make" to compile the source code
-"make clean" to delete executable and object files
-
 This software requires Qpid C++ client library and QMF C++ library.
-The executables files are "landmark", "proposer", "acceptor", "requestor", "heartbeat_server", "messagecopy_server".
-"bgtraffic", "qpidconf", "heartbeat_tester", and "pingd_src/pingd" in "extra" directory
+The executables files are "landmark", "proposer", "acceptor", "requestor", "heartbeat_server".
+"messagecopy_server", "bgtraffic", "qpidconf", "heartbeat_tester", and "pingd" are extra but not essential codes
 
 
 	Centralized Mode:
@@ -42,11 +39,16 @@ The heartbeat_server must run on the nodes with proposer, acceptor, or requestor
 
 In distributed mode, the proposers and acceptors should be started before the requestors.
 
-The following commands start proposer and acceptor. Both of them need no argument.
-	# proposer
+The following command starts proposer.
+	# proposer BACKUP_LIST_FILE
+Like landmark, BACKUP_LIST_FILE contains the list of backup brokers.
+The default argument of proposer is
+	# proposer brokerlist.txt
+
+The following command starts acceptor. No parameter is needed.
 	# acceptor
 
-The following commands starts requestor.
+The following command starts requestor.
 	# requestor SERVICE_NAME BROKER_PORT NUMBER_OF_PROPOSERS NUNBER_OF_ACCEPTORS PROPOSER_LIST_FILE ACCEPTOR_LIST_FILE
 
 SERVICE_NAME is an unique name of the broker service.
@@ -58,6 +60,7 @@ ACCEPTOR_LIST_FILE is the file containing the list of the available acceptors. T
 There is no default value for SERVICE_NAME. The default values for other arguments are
 	# requestor SERVICE_NAME 5672 0 0 paxoslist.txt paxoslist.txt
 
+distributed.sh is a sample script.
 
 	Extra
 

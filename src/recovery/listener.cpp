@@ -4,8 +4,10 @@
 #include<memory.h>
 #include"timestamp.h"
 
+//#define STDCOUT1(A) std::cout << A
 #define STDCOUT1(A)
-#define STDCOUT2(A) std::cout << A
+//#define STDCOUT2(A) std::cout << A
+#define STDCOUT2(A)
 #define STDCOUTFLUSH()
 //#define STDCOUTFLUSH() std::cout.flush()
 

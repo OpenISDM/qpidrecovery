@@ -157,10 +157,12 @@ enum PaxosResult AcceptorStateMachine::handlePhase1Message(int replysfd, Proposa
 
 	enum PaxosMessageType reply;
 	if(this->promise->compare(*p) > 0){
+STDCOUT("acceptor: phase1 nack\n");
 		delete p;
 		reply = PHASE1NACK;
 	}
 	else{
+STDCOUT("acceptor: phase1 ack\n");
 		delete this->promise;
 		this->promise = p;
 		reply = PHASE1ACK;
@@ -199,6 +201,7 @@ enum PaxosResult AcceptorStateMachine::handlePhase3Message(Proposal *p){
 		delete p;
 		return HANDLED;
 	}
+STDCOUT("acceptor: commit\n");
 	delete this->lastcommit;
 	this->lastcommit = p;
 	this->state = PHASE3;
@@ -210,8 +213,8 @@ enum PaxosResult AcceptorStateMachine::handleMessage(int replysfd, PaxosMessage 
 	struct PaxosHeader &ph = m.header;
 	if(this->isRecepient(ph.name) == 0)
 		return IGNORED;
-STDCOUT(this->getVotingVersion() << " "<< ph.version << "\n");
-STDCOUTFLUSH();
+// STDCOUT(this->getVotingVersion() << " "<< ph.version << "\n");
+// STDCOUTFLUSH();
 	if(this->getVotingVersion() < ph.version){ // missed changing acceptor
 		// this->initialState(ph.version);
 		// reply the proposer
@@ -306,6 +309,7 @@ STDCOUT("proposer: new proposal, " << this->nacceptor << " acceptors\n");
 		return HANDLED;
 	}
 	else{
+STDCOUT("proposer: commit\n");
 		this->state = PHASE2;
 		return COMMITTING_SELF;
 	}
@@ -345,7 +349,7 @@ enum PaxosResult ProposerStateMachine::handlePhase1Message(int replysfd, enum Pa
 	default:
 		return HANDLED;
 	}
-STDCOUT("proposer: phase1 " << this->phase1ack << ", " << this->phase1nack << "\n");
+STDCOUT("proposer: phase1 ack=" << this->phase1ack << ", nack=" << this->phase1nack << "\n");
 	if(this->phase1ack * 2 <= this->nacceptor && this->nacceptor != 0)
 		return HANDLED;
 
@@ -355,7 +359,7 @@ STDCOUT("proposer: phase1 " << this->phase1ack << ", " << this->phase1nack << "\
 		sendHeaderProposal(accsfd[i],
 		PHASE2REQUEST, this->getVotingVersion(), this->getName(), this->proposal);
 	}
-STDCOUT("proposer: phase2 0, 0\n");
+STDCOUT("proposer: phase2 ack=0, nack=0\n");
 	this->state = PHASE2;
 	this->timestamp = getSecond();
 	return HANDLED;
@@ -381,10 +385,11 @@ enum PaxosResult ProposerStateMachine::handlePhase2Message(int replysfd, enum Pa
 	default:
 		return HANDLED;
 	}
-STDCOUT("proposer: phase2 " << this->phase2ack << ", " << this->phase2nack << "\n");
+STDCOUT("proposer: phase2 ack=" << this->phase2ack << ", nack=" << this->phase2nack << "\n");
 	if(this->isReadyToCommit() == false)
 		return HANDLED;
 
+STDCOUT("proposer: commit\n");
 	return COMMITTING_SELF;
 }
 

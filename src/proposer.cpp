@@ -164,8 +164,6 @@ STDCOUT("recovery ends at " << getSecond() << "\n");
 logTime("finishRecovery");
 		}
 		mon.informAll();
-STDCOUT("inform all\n");
-STDCOUTFLUSH();
 	}
 	if(ptype == ACCEPTORCHANGEPROPOSAL){
 STDCOUT("acceptor change propsal committed\n");
@@ -186,7 +184,7 @@ static int handlePaxosMessage(int ready, MVector &monitor, RecoveryManager &reco
 	PaxosMessage m;
 	if(m.receive(ready) < 0)
 		return -1;
-STDCOUT("pmessage\n");
+
 	for(MVector::iterator i = monitor.begin(); i != monitor.end(); i++){
 		Monitored &mon = (*i);
 		ProposerStateMachine *psm = mon.psm;
@@ -197,9 +195,9 @@ STDCOUT("pmessage\n");
 			return 0;
 		if(handleCommit(r, mon, fs, recovery) == 0)
 			return 0;
-		cerr << "error: unknown message";
+		cerr << "error: unknown paxos message";
 	}
-	cerr << "msg unhandled\n";
+	cerr << "paxos msg unhandled\n";
 	return 0;
 }
 
@@ -310,7 +308,7 @@ int main(int argc, char *argv[]){
 	replaceSIGPIPE();
 
 	{ // read arguments
-		const int argc2 = (iscentralizedmode? 3: 1);
+		const int argc2 = (iscentralizedmode? 3: 2);
 		const char *argv2[3] = {"", "brokerlist.txt", "brokerlist.txt"};
 		if(argc > argc2){
 			cerr << "too many arguments" << endl;
@@ -322,6 +320,9 @@ int main(int argc, char *argv[]){
 		if(iscentralizedmode){
 			readMonitoredBrokerArgument(argc - 1, (const char**)(argv2 + 1));
 			readBackupBrokerArgument(argc - 2, (const char**)(argv2 + 2));
+		}
+		if(isdistributedmode){
+			readBackupBrokerArgument(argc - 1, (const char**)(argv2 + 1));
 		}
 	}
 
@@ -378,7 +379,7 @@ int main(int argc, char *argv[]){
 				monitor, bip, r.brokerport, fs);
 
 				recovery.addBroker(bip, r.brokerport);
-				STDCOUT(ready << "(requestsfd) broker added\n");
+				STDCOUT("start to monitor " << bip << ":" << r.brokerport << "\n");
 			}
 			continue;
 		}

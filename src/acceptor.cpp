@@ -43,7 +43,6 @@ static int handlePaxosMessage(int ready, NVector &accname){
 	PaxosMessage m;
 	if(m.receive(ready) < 0)
 		return -1;
-STDCOUT("acceptor: paxos msg\n");
 	for(NVector::iterator i = accname.begin(); i != accname.end(); i++){
 		const PaxosResult r = (*i).acc->handleMessage(ready, m);
 		if(r == IGNORED)
@@ -104,12 +103,12 @@ STDCOUT("acceptor: new paxosfd\n");
 		}
 
 		if(ready == GET_READY_FD_TIMEOUT){
-STDCOUT("timeout\n");
+// STDCOUT("timeout\n");
 			fs.resetTimeout(4, 0);
 
 			for(NVector::iterator i = accname.begin(); i != accname.end(); i++){
 				if((*i).acc->checkTimeout(4) == HANDLED){
-STDCOUT("acceptor: state machine timeout\n");
+// STDCOUT("acceptor: state machine timeout\n");
 				}
 			}
 			continue;

@@ -133,7 +133,7 @@ cout << "recoverymanager: addBroker " << abarg->address.ip << ":" << abarg->addr
 int RecoveryManager::addBroker(const char *ip, unsigned port){
 	BrokerAddress ba((string)ip, port);
 	int brokerindex;
-cout << "recoverymanager: prepare addBroker " << ip << ":" << port;
+cout << "recoverymanager: prepare addBroker " << ip << ":" << port << "\n";
 	{
 		pthread_mutex_lock(&(this->bavecmutex));
 		brokerindex = this->getBrokerIndexByAddress(ba);
