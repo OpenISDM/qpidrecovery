@@ -1,25 +1,91 @@
-	Qpid Recovery Program README.txt
+	    QpidR/C++
+        =========
 
-This software requires Qpid C++ client library and QMF C++ library.
-The executables files are "landmark", "proposer", "acceptor", "requestor", "heartbeat_server".
-"messagecopy_server", "bgtraffic", "qpidconf", "heartbeat_tester", and "pingd" are extra but not essential codes
+Table of Contents
+=================
+1. Introduction
+2. Howto Build
+3. Quick start - Centralized mode
+4. Quick start - Distributed mode
+5. extra tools
 
+1. Introduction
+===============
+QpidR/C++ is a C++ program based on PAXOS algorithm for QPID recovery mechamism.
 
-	Centralized Mode:
+There are five main executable files containing "landmark", "proposer", "acceptor", "requestor", "heartbeat_server".
+	- landmark
+    - proposer
+    - acceptor
+    - requestor
+    - heartbeat_server
 
-To execute landmark mode, the required files are "landmark", "requestor", "heartbeat_server"
+Also, five extra executable files are included which are not essential for recovery mechanism.
+    - messagecopy_server
+    - bgtraffic
+    - qpidconf
+    - heartbear_tester
+    - pingd
+
+Please go to the website for more detail. 
+http://www.openfoundry.org/of/projects/2295
+
+2. Howto Build
+==============
+
+First, build Qpid. Please follow qpid description to complete installation procedure.
+
+    In qpidc-0.xx folder:
+    #sudo apt-get install gcc g++ libboost-system-dev uuid uuid-dev libsasl2-2 sasl2-bin libboost-program-options-dev python perl
+
+    #./configure
+
+    #make
+ 
+    QpidR need qpid library installed in the system.
+    #sudo make install
+
+Second, build QpidR
+
+    Install svn tool
+    #sudo apt-get install subversion
+    
+    Get QpidR source code:
+    #svn co http://svn.openfoundry.org/qpidrecovery qpidrecovery
+
+    In qpidrecovery folder:
+    #cd src
+
+    #./configure
+    
+    #make
+
+    Use the command and main executable files will be copied to /usr/local/bin
+    #sudo make install
+
+    Type proposer and installation process is completed once prompt is shown like below.
+    #proposer
+    cannot open brokerlist.txt
+
+3. Quick start - Centralized mode
+=================================
+
+To execute landmark mode, the required files are:
+    - landmark
+    - requestor
+    - heartbeat_server
 
 Before starting landmark, the heartbeat_server processes have to be started on both landmark and broker node.
 In addition, it is necessary to start requestor processes along with the brokers to be monitored.
 
-The fillowing command starts heartbeat_server. No parameter is needed.
+The following command starts heartbeat_server. No parameter is needed.
 	# heartbeat_server
 
 The following command starts requestor.
 	# requestor --landmark LANDMARK_IP
 The LANDMARK_IP is the ip address, not including port, of the landmark that monitors this broker.
 
-After starting Qpid broker, heartbeat_server, and requestor, type the fillowing command to start landmark:
+After starting Qpid broker, heartbeat_server, and requestor, type the following command to start landmark:
 	# landmark BROKER_LIST_FILE BACKUP_LIST_FILE
 
 BROKER_LIST_FILE is the file containing the list of the brokers to be monitored. It is a text file consists of several lines. Each line is in IP:PORT format.
@@ -30,9 +96,15 @@ The default arguments of landmark are
 centralized.sh is a sample script.
 
 
-	Distributed Mode:
 
-To execute distributed mode, the required files are "proposer", "acceptor", "heartbeat_server", "requestor"
+4. Quick start - Distributed mode
+=================================
+
+To execute distributed mode, the required files are:
+    - proposer
+    - acceptor
+    - heartbeat_server
+    - requestor
 
 The heartbeat_server must run on the nodes with proposer, acceptor, or requestor service.
 	# heartbeat_server
@@ -62,6 +134,11 @@ There is no default value for SERVICE_NAME. The default values for other argumen
 
 distributed.sh is a sample script.
 
-	Extra
 
-qpidconf is a simple qmf commandline tool written in C++. Because QMF tools in Python may not be available on platforms other than x86, this program is useful when porting Qpid.
+5. extra tools
+==============
+
+qpidconf is a simple qmf commandline tool written in C++. 
+Because QMF tools in Python may not be available on platforms other than x86, this program is useful when porting Qpid.
+
+
