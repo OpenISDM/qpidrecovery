@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 #include <qpid/messaging/Connection.h>
 #include <qpid/messaging/Session.h>
 #include <qpid/messaging/Message.h>

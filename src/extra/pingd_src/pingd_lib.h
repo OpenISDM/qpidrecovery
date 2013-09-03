@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 int pingd_socket(int isclient);
 int pingd_receivefrom(int sfd, char* from, void* buf, int bufsize);
 int pingd_sendto(int sfd, const char* ipaddress, void* buf, int bufsize, int isclient);

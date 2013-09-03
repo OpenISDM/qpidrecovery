@@ -1,3 +1,8 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
 
 /*int getLocalIP(char* ip);*/
 int nametoaddr(const char *hostname, char *address);

@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 #include "pingd_.h"
 #include "pingd_lib.h"
 #include <unistd.h>

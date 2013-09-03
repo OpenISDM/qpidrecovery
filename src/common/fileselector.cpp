@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 #include"fileselector.h"
 #include<sys/select.h>
 #include<unistd.h>

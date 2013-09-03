@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 #include<iostream>
 #include"heartbeat_lib.h"
 #include"socketlib.h"

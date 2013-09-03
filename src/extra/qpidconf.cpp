@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 #include "brokerobject.h"
 #include "qpid/console/ConsoleListener.h"
 #include "qpid/console/SessionManager.h"

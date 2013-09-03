@@ -1,3 +1,9 @@
+/*
+** QpidR - Qpid recovery tool
+** newslab.csie.ntu.edu.tw, Taiwan
+** See Copyright Notice in common.h
+*/
+
 #ifndef FILESELECTOR_H_INCLIDED
 #define FILESELECTOR_H_INCLIDED
 
