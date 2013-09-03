@@ -1,4 +1,4 @@
-	    QpidR/C++
+        QpidR/C++
         =========
 
 Table of Contents
@@ -15,7 +15,7 @@ Table of Contents
 QpidR/C++ is a C++ program based on PAXOS algorithm for QPID recovery mechanism.
 
 There are five main executable files containing "landmark", "proposer", "acceptor", "requestor", "heartbeat_server".
-	- landmark
+    - landmark
     - proposer
     - acceptor
     - requestor
@@ -38,35 +38,35 @@ http://www.openfoundry.org/of/projects/2295
 First, build Qpid. Please follow Qpid's README to complete installation procedure.
 
     In qpidc-0.xx folder:
-    #sudo apt-get install gcc g++ libboost-system-dev uuid uuid-dev libsasl2-2 sasl2-bin libboost-program-options-dev python perl
+    # sudo apt-get install gcc g++ libboost-system-dev uuid uuid-dev libsasl2-2 sasl2-bin libboost-program-options-dev python perl
 
-    #./configure
+    # ./configure
 
-    #make
+    # make
  
     QpidR need qpid library installed in the system.
-    #sudo make install
+    # sudo make install
 
 Second, build QpidR
 
     Install svn tool
-    #sudo apt-get install subversion
+    # sudo apt-get install subversion
     
     Get QpidR source code:
-    #svn co http://svn.openfoundry.org/qpidrecovery qpidrecovery
+    # svn co http://svn.openfoundry.org/qpidrecovery qpidrecovery
 
     In qpidrecovery folder:
-    #cd src
+    # cd src
 
     #./configure
     
-    #make
+    # make
 
     Use the command and main executable files will be copied to /usr/local/bin
-    #sudo make install
+    # sudo make install
 
     Type proposer and installation process is completed once prompt is shown like below.
-    #proposer
+    # proposer
     cannot open brokerlist.txt
 
 
@@ -82,19 +82,21 @@ Before starting landmark, the heartbeat_server processes have to be started on b
 In addition, it is necessary to start requestor processes along with the brokers to be monitored.
 
 The following command starts heartbeat_server. No parameter is needed.
-	# heartbeat_server
+    # heartbeat_server
 
 The following command starts requestor.
-	# requestor --landmark LANDMARK_IP
+    # requestor --landmark LANDMARK_IP
 The LANDMARK_IP is the ip address, not including port, of the landmark that monitors this broker.
 
 After starting Qpid broker, heartbeat_server, and requestor, type the following command to start landmark:
-	# landmark BROKER_LIST_FILE BACKUP_LIST_FILE
+    # landmark BROKER_LIST_FILE BACKUP_LIST_FILE
 
-BROKER_LIST_FILE is the file containing the list of the brokers to be monitored. It is a text file consists of several lines. Each line is in IP:PORT format.
-BACKUP_LIST_FILE contains the list of brokers serving as backup. The file format is the same as BROKER_LIST_FILE.
+BROKER_LIST_FILE is the file containing the list of the brokers to be monitored. 
+It is a text file consists of several lines. Each line is in IP:PORT format.
+BACKUP_LIST_FILE contains the list of brokers serving as backup. 
+The file format is the same as BROKER_LIST_FILE.
 The default arguments of landmark are
-	# landmark brokerlist.txt brokerlist.txt
+    # landmark brokerlist.txt brokerlist.txt
 
 centralized.sh is a sample script.
 
@@ -109,21 +111,21 @@ To execute distributed mode, the required files are:
     - requestor
 
 The heartbeat_server must run on the nodes with proposer, acceptor, or requestor service.
-	# heartbeat_server
+    # heartbeat_server
 
 In distributed mode, the proposers and acceptors should be started before the requestors.
 
 The following command starts proposer.
-	# proposer BACKUP_LIST_FILE
+    # proposer BACKUP_LIST_FILE
 Like landmark, BACKUP_LIST_FILE contains the list of backup brokers.
 The default argument of proposer is
-	# proposer brokerlist.txt
+    # proposer brokerlist.txt
 
 The following command starts acceptor. No parameter is needed.
-	# acceptor
+    # acceptor
 
 The following command starts requestor.
-	# requestor SERVICE_NAME BROKER_PORT NUMBER_OF_PROPOSERS NUNBER_OF_ACCEPTORS PROPOSER_LIST_FILE ACCEPTOR_LIST_FILE
+    # requestor SERVICE_NAME BROKER_PORT NUMBER_OF_PROPOSERS NUNBER_OF_ACCEPTORS PROPOSER_LIST_FILE ACCEPTOR_LIST_FILE
 
 SERVICE_NAME is an unique name of the broker service.
 BROKER_PORT is the port of the monitored broker. Because the requestor should run on the node with Qpid broker, the IP address of the broker is omitted.
@@ -132,7 +134,7 @@ NUMBER_OF_ACCEPTORS is the expected number of acceptors that participate in the 
 PROPOSER_LIST_FILE is the file containing the list of the available proposers. It is a text file consists of several lines. Each line is an IP address, not including port.
 ACCEPTOR_LIST_FILE is the file containing the list of the available acceptors. The file format is the same as PROPOSER_LIST_FILE.
 There is no default value for SERVICE_NAME. The default values for other arguments are
-	# requestor SERVICE_NAME 5672 0 0 paxoslist.txt paxoslist.txt
+    # requestor SERVICE_NAME 5672 0 0 paxoslist.txt paxoslist.txt
 
 distributed.sh is a sample script.
 
