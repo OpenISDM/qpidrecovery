@@ -4,14 +4,15 @@
 Table of Contents
 =================
 1. Introduction
-2. Howto Build
+2. HowTo Build
 3. Quick start - Centralized mode
 4. Quick start - Distributed mode
-5. extra tools
+5. Extra tools
+
 
 1. Introduction
 ===============
-QpidR/C++ is a C++ program based on PAXOS algorithm for QPID recovery mechamism.
+QpidR/C++ is a C++ program based on PAXOS algorithm for QPID recovery mechanism.
 
 There are five main executable files containing "landmark", "proposer", "acceptor", "requestor", "heartbeat_server".
 	- landmark
@@ -30,10 +31,11 @@ Also, five extra executable files are included which are not essential for recov
 Please go to the website for more detail. 
 http://www.openfoundry.org/of/projects/2295
 
-2. Howto Build
+
+2. HowTo Build
 ==============
 
-First, build Qpid. Please follow qpid description to complete installation procedure.
+First, build Qpid. Please follow Qpid's README to complete installation procedure.
 
     In qpidc-0.xx folder:
     #sudo apt-get install gcc g++ libboost-system-dev uuid uuid-dev libsasl2-2 sasl2-bin libboost-program-options-dev python perl
@@ -67,6 +69,7 @@ Second, build QpidR
     #proposer
     cannot open brokerlist.txt
 
+
 3. Quick start - Centralized mode
 =================================
 
@@ -94,7 +97,6 @@ The default arguments of landmark are
 	# landmark brokerlist.txt brokerlist.txt
 
 centralized.sh is a sample script.
-
 
 
 4. Quick start - Distributed mode
@@ -135,7 +137,7 @@ There is no default value for SERVICE_NAME. The default values for other argumen
 distributed.sh is a sample script.
 
 
-5. extra tools
+5. Extra tools
 ==============
 
 qpidconf is a simple qmf commandline tool written in C++. 
